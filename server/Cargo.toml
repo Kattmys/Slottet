@@ -1,0 +1,10 @@
+[package]
+name = "server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+protocol = { version = "0.1.0", path = "../protocol" }
+bincode = { version = "1.3.3" }
+renet = "2.0.1"
+renet_netcode = "2.0.1"
