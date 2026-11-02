@@ -1,6 +1,7 @@
 use protocol::{ Result, ClientPacket, ServerPacket };
 use renet::{ ClientId };
 use crate::socket::{ Socket };
+use std::time::{ Duration };
 
 pub struct Server {
     addr: String,
@@ -16,9 +17,13 @@ impl Server {
 
         loop {
             if let Ok(packets) = socket.recv().await {
-                let responses = self.update(packets);
+                let _responses = self.update(packets).await;
             };
-            socket.broadcast(ServerPacket::Pong);
+            let _ = socket.broadcast(ServerPacket::Pong)
+                .await
+                .inspect_err(|e| eprintln!("Unable to broadcast pong: {e:?}"));
+
+            tokio::time::sleep(Duration::from_millis(16)).await;
         }
     }
 
