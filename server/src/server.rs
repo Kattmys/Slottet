@@ -27,7 +27,7 @@ impl Server {
         }
     }
 
-    pub async fn update(&mut self, packets: Vec<(ClientId, ClientPacket)>) -> Vec<ServerPacket> {
+    pub async fn update(&mut self, _packets: Vec<(ClientId, ClientPacket)>) -> Vec<ServerPacket> {
         vec![] // TODO implement update game logic
     }
 }
