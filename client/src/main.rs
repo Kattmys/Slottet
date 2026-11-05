@@ -41,13 +41,9 @@ async fn main() {
 
 pub async fn render(ecs: &hecs::World, player: hecs::Entity) {
     let viewport_offset = match ecs.get::<&Transform>(player) {
-        Ok(player_transform ) => {
-            player_transform.position - vec2(screen_width() / 2., screen_height() / 2.)
-        }
-        Err(e) => {
-            eprintln!("cannot center viewport since player is not found: '{e}'");
-            Vec2::ZERO
-        }
+        Ok(player_transform)
+            => player_transform.position - vec2(screen_width() / 2., screen_height() / 2.),
+        Err(_) => Vec2::ZERO,
     };
 
     for (entity, transform) in ecs.query::<(hecs::Entity, &Transform)>().iter() {
