@@ -8,15 +8,25 @@ use std::env;
 use macroquad::prelude::*;
 use hecs;
 
-#[macroquad::main("Slottet")]
+fn conf() -> Conf {
+    Conf {
+        window_title: "Slottet".to_string(),
+        window_width: 1260,
+        window_height: 768,
+        fullscreen: false,
+        ..Default::default()
+    }
+}
+
+#[macroquad::main(conf)]
 async fn main() {
-    let args: Vec<String> = env::args().collect();
-    let Some(addr) = args.get(1) else {
-        eprintln!("help: run [ip:port]");
+    let args: &[String] = &env::args().collect::<Vec<_>>().into_boxed_slice();
+    let [_, addr] = args else {
+        eprintln!("help: {bin} [ip:port]", bin=args[0]);
         return;
     };
 
-    let (_client, _transport, ecs, player) = connect(addr.to_string()).unwrap();
+    let (_server, _transport, ecs, player) = connect(addr.to_string()).unwrap();
 
     loop {
         clear_background(LIGHTGRAY);
