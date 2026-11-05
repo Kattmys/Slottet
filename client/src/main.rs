@@ -8,7 +8,7 @@ use std::env;
 use macroquad::prelude::*;
 use hecs;
 
-#[macroquad::main("BasicShapes")]
+#[macroquad::main("Slottet")]
 async fn main() {
     let args: Vec<String> = env::args().collect();
     let Some(addr) = args.get(1) else {
