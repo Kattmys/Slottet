@@ -1,7 +1,8 @@
 pub mod network;
 pub mod components;
 
-pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>; // temporary
+// temporary
+pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 use hecs;
 use macroquad::math::{ Vec2 };
@@ -11,6 +12,9 @@ use serde::{ Serialize, Deserialize };
 #[derive(Serialize, Deserialize)]
 pub enum ServerPacket {
     Pong,
+    Ecs {
+        columns: Columns,
+    },
     ClientVelocity {
         entity: hecs::Entity,
         velocity: Vec2,
@@ -29,4 +33,13 @@ pub enum ServerPacket {
 pub enum ClientPacket {
     Ping,
     Velocity(Vec2),
+}
+
+type Column<T> = Vec<(hecs::Entity, T)>;
+
+#[allow(non_snake_case)]
+#[derive(Default, Debug, Serialize, Deserialize)]
+pub struct Columns {
+    Player: Column<components::Player>,
+    Transform: Column<components::Transform>,
 }
