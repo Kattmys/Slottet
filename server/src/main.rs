@@ -1,21 +1,22 @@
-pub mod socket;
-pub mod server;
-
-use crate::server::{ Server };
+mod server;
 
 use std::{ env };
+use protocol::Result;
+use crate::server::{ Server };
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() {
+async fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     let Some(addr) = args.get(1) else {
         eprintln!("help: run [ip:port]");
-        return;
+        return Ok(());
     };
 
     println!("starting slottet server on {addr}...");
-    let server = Server::new(addr.to_string());
+    let server = Server::connect(addr.to_string())?;
     server.run()
         .await
         .unwrap();
+
+    Ok(())
 }

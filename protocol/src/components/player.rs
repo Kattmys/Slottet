@@ -1,7 +1,4 @@
 use super::*;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Player;
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Position;
