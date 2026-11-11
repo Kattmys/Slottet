@@ -33,7 +33,7 @@ pub struct Columns {
 #[macro_export]
 macro_rules! columns {
     ($world:expr, [$($ident:ident),*]) => {{
-        let mut columns = protocol::network::Columns::default();
+        let mut columns = common::network::Columns::default();
         $(
             columns.$ident =
                 $world.query::<(hecs::Entity, &$ident)>().iter()

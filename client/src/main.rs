@@ -2,7 +2,7 @@ use std::{
     env,
     time::Duration,
 };
-use protocol::{
+use common::{
     Result,
     network::*,
     components::*,

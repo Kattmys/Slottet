@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-protocol = { version = "0.1.0", path = "../protocol" }
+common = { version = "0.1.0", path = "../common" }
 bincode = { version = "1.3.3" }
 macroquad = { version = "0.4.16", features = ["glam-serde"] }
 renet = "2.0.1"

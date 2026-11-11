@@ -1,4 +1,4 @@
-use protocol::{
+use common::{
     Result,
     network::*,
     components::*,
