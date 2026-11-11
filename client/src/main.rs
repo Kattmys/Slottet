@@ -1,4 +1,5 @@
 pub mod network;
+pub mod texture;
 use crate::network::{ connect };
 
 use protocol::components::{ Transform };
@@ -28,37 +29,46 @@ async fn main() {
 
     let (_server, _transport, ecs, player) = connect(addr.to_string()).unwrap();
 
+    let textures = texture::TextureManager::init("assets").await.unwrap();
+
     loop {
         clear_background(LIGHTGRAY);
 
         draw_text("HELLO", 20.0, 20.0, 30.0, DARKGRAY);
 
-        render(&ecs, player).await;
+        render(&ecs, player, &textures).await;
 
         next_frame().await
     }
 }
 
-pub async fn render(ecs: &hecs::World, player: hecs::Entity) {
+pub async fn render(ecs: &hecs::World, player: hecs::Entity, textures: &texture::TextureManager) {
     let viewport_offset = match ecs.get::<&Transform>(player) {
         Ok(player_transform)
             => player_transform.position - vec2(screen_width() / 2., screen_height() / 2.),
         Err(_) => Vec2::ZERO,
     };
 
+    let enemy_texture = textures.get("pfp.png").await.unwrap();
     for (entity, transform) in ecs.query::<(hecs::Entity, &Transform)>().iter() {
-        let color = if entity == player {
+        let _color = if entity == player {
+            draw_rectangle(
+                transform.position.x - viewport_offset.x,
+                transform.position.y - viewport_offset.y,
+                30.0,
+                30.0,
+                GREEN,
+            );
             GREEN
         } else {
+            draw_texture(
+                enemy_texture,
+                transform.position.x - viewport_offset.x,
+                transform.position.y - viewport_offset.y,
+                WHITE
+            );
             RED
         };
 
-        draw_rectangle(
-            transform.position.x - viewport_offset.x,
-            transform.position.y - viewport_offset.y,
-            30.0,
-            30.0,
-            color,
-        );
     }
 }
