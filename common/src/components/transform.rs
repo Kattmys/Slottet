@@ -1,0 +1,13 @@
+use super::*;
+use macroquad::math::{ Vec2 };
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Transform {
+    pub pos: Vec2,
+}
+
+impl Transform {
+    pub fn new(pos: Vec2) -> Self {
+        Self { pos }
+    }
+}

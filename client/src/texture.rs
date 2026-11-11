@@ -1,14 +1,16 @@
+use common::Result;
+
 use macroquad::prelude::*;
-use std::collections::{ HashMap };
+use std::collections::HashMap;
 use std::fs;
-use std::path::{ Path };
+use std::path::Path;
 
 pub struct TextureManager {
     map: HashMap<String, Texture2D>,
 }
 
 impl TextureManager {
-    pub async fn init(path_str: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn init(path_str: &str) -> Result<Self> {
         let path = Path::new(path_str);
 
         let mut map = HashMap::new();
@@ -30,7 +32,11 @@ impl TextureManager {
         return self.map.get(path)
     }
 
-    async fn traverse_textures(dir: &Path, prefix: &str, data: &mut HashMap<String, Texture2D>) -> Result<(), Box<dyn std::error::Error>> {
+    async fn traverse_textures(
+        dir: &Path,
+        prefix: &str,
+        data: &mut HashMap<String, Texture2D>
+    ) -> Result<()> {
         if dir.is_dir() {
             for entry in fs::read_dir(dir)? {
                 let entry = entry?;

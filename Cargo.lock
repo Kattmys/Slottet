@@ -109,10 +109,10 @@ name = "client"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "common",
  "hecs",
  "lazy_static",
  "macroquad",
- "protocol",
  "renet",
  "renet_netcode",
  "serde",
@@ -123,6 +123,18 @@ name = "color_quant"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
+
+[[package]]
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "hecs",
+ "macroquad",
+ "renet",
+ "renet_netcode",
+ "serde",
+]
 
 [[package]]
 name = "core_maths"
@@ -455,18 +467,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "protocol"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "hecs",
- "macroquad",
- "renet",
- "renet_netcode",
- "serde",
-]
-
-[[package]]
 name = "quad-rand"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -557,7 +557,9 @@ name = "server"
 version = "0.1.0"
 dependencies = [
  "bincode",
- "protocol",
+ "common",
+ "glam",
+ "hecs",
  "renet",
  "renet_netcode",
  "serde",
