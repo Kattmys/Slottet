@@ -13,7 +13,7 @@ use std::time::{ Duration, Instant };
 use std::collections::HashMap;
 use glam::vec2;
 
-const TICK_RATE: u64 = 60;
+const TICK_RATE: f64 = 60.;
 const COLUMN_SEND_COUNTER: u64 = 10;
 
 pub struct Server {
@@ -32,13 +32,21 @@ impl Server {
     }
 
     pub async fn run(&mut self) -> Result<()> {
-        let mut delta = Duration::from_millis(0);
-        let mut last_updated = Instant::now();
-
         let mut send_column_counter = Counter::new(COLUMN_SEND_COUNTER);
         let mut column_counter = Counter::new(NUM_COLUMNS);
 
+        let mut last_updated = Instant::now();
+        let mut now = Instant::now();
+        let mut delta = now - last_updated;
+
         loop {
+            let timer = tokio::spawn(async {
+                tokio::time::sleep(Duration::from_secs_f64(1.0/TICK_RATE)).await;
+            });
+            let now = Instant::now();
+            delta = now - last_updated;
+            last_updated = now;
+
             let mut messages = Vec::new();
 
             if send_column_counter.step(1) == 0 {
@@ -50,10 +58,8 @@ impl Server {
 
             update_movement(&mut self.world, delta).await;
 
-            let now = Instant::now();
-            delta = now - last_updated;
-            tokio::time::sleep(Duration::from_millis(1000/TICK_RATE).saturating_sub(delta)).await;
-            last_updated = now;
+            // tokio::time::sleep(Duration::from_secs_f64(1.0/TICK_RATE).saturating_sub(delta)).await;
+            timer.await;
         }
     }
 
