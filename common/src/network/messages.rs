@@ -4,9 +4,6 @@ use crate::components::direction::MoveDirection;
 use macroquad::math::{ Vec2 };
 use serde::{ Serialize, Deserialize };
 
-pub type ServerMessages = Vec<ServerMessage>;
-pub type ClientMessages = Vec<ClientMessage>;
-
 // from server
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ServerMessage {
