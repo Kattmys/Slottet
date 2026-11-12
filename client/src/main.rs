@@ -3,19 +3,18 @@ mod keybinds;
 
 use crate::texture::TextureManager;
 use crate::keybinds::{ Event, KeyMap, load_keymap };
-use common::{
-    Result,
-    network::{
-        ClientMessage,
-        ServerMessage,
-        create_client,
-        RENET_CHANNELS,
-        serialize,
-        deserialize,
-    },
-    components::{ Transform, MoveDirection },
-    systems::update_movement,
+use common::Result;
+use common::network::{
+    ClientMessage,
+    ServerMessage,
+    create_client,
+    RENET_CHANNELS,
+    serialize,
+    deserialize,
 };
+use common::utils::epoch_time;
+use common::components::{ Transform, MovementState, Direction };
+use common::systems::update_movement;
 
 use macroquad::prelude::*;
 use std::env;
@@ -81,15 +80,15 @@ impl Client {
             let down  = events.contains(&&Event::GoDown);
             let left  = events.contains(&&Event::GoLeft);
 
-            if      up && left    { MoveDirection::NorthWest }
-            else if up && right   { MoveDirection::NorthEast }
-            else if down && left  { MoveDirection::SouthWest }
-            else if down && right { MoveDirection::SouthEast }
-            else if up            { MoveDirection::North }
-            else if right         { MoveDirection::East }
-            else if down          { MoveDirection::South }
-            else if left          { MoveDirection::West }
-            else { MoveDirection::None }
+            if      up && left    { Direction::NorthWest }
+            else if up && right   { Direction::NorthEast }
+            else if down && left  { Direction::SouthWest }
+            else if down && right { Direction::SouthEast }
+            else if up            { Direction::North }
+            else if right         { Direction::East }
+            else if down          { Direction::South }
+            else if left          { Direction::West }
+            else { Direction::None }
         };
 
         for event in events {
@@ -101,10 +100,15 @@ impl Client {
             }
         }
 
-        if let Ok(mut player_dir) = self.world.get::<&mut MoveDirection>(self.player) {
-            if !(*player_dir == dir) {
-                *player_dir = dir.clone();
-                messages.push(ClientMessage::MoveDirection(dir));
+        if let Ok(mut move_state) = self.world.get::<&mut MovementState>(self.player) {
+            if !(move_state.dir == dir) {
+                move_state.dir = dir.clone();
+                messages.push(ClientMessage::Movement {
+                    movement: MovementState {
+                        dir,
+                        timestamp: epoch_time(),
+                    }
+                });
             }
         }
 
@@ -124,12 +128,12 @@ impl Client {
                     }
                 }
 
-                update_components!(self.world, columns, [Player, Transform, MoveDirection]);
+                update_components!(self.world, columns, [Player, Transform, MovementState]);
             }
 
-            ServerMessage::MoveDirection { entity, dir, timestamp } => {
-                if let Ok(mut entity_dir) = self.world.get::<&mut MoveDirection>(entity) {
-                    *entity_dir = dir;
+            ServerMessage::Movement { entity, movement } => {
+                if let Ok(mut move_state) = self.world.get::<&mut MovementState>(entity) {
+                    *move_state = movement;
                 }
             }
         }

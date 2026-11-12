@@ -1,6 +1,5 @@
 use crate::components;
-use crate::components::MoveDirection;
-use crate::components::MovementUpdate;
+use crate::components::MovementState;
 
 use serde::{ Serialize, Deserialize };
 
@@ -11,18 +10,17 @@ pub enum ServerMessage {
     InitialData {
         entity: hecs::Entity,
     },
-    MoveDirection {
+    Movement {
         entity: hecs::Entity,
-        dir: MoveDirection,
-        timestamp: f64,
+        movement: MovementState,
     },
 }
 
 // from client
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientMessage {
-    MoveDirection {
-        move: MovementUpdate,
+    Movement {
+        movement: MovementState,
     },
 }
 
@@ -34,7 +32,7 @@ pub struct Columns {
     pub ids: Vec<hecs::Entity>,
     pub Player: Column<components::Player>,
     pub Transform: Column<components::Transform>,
-    pub MoveDirection: Column<components::MoveDirection>,
+    pub MovementState: Column<components::MovementState>,
 }
 
 pub const NUM_COLUMNS: u64 = 3;

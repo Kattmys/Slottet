@@ -2,7 +2,7 @@ use common::{
     Result,
     network::*,
     components::*,
-    utils::{ Counter, CounterType },
+    utils::{ Counter, CounterType, epoch_time },
     systems::update_movement,
     columns,
 };
@@ -68,7 +68,7 @@ impl Server {
         let columns = match index {
             0 => columns!(self.world, [Player]),
             1 => columns!(self.world, [Transform]),
-            2 => columns!(self.world, [MoveDirection]),
+            2 => columns!(self.world, [MovementState]),
             _ => unreachable!()
         };
         ServerMessage::World(columns)
@@ -80,13 +80,18 @@ impl Server {
             return
         };
         match msg {
-            ClientMessage::MoveDirection { dir, timestamp } => {
-                if let Ok(mut entity_dir) = self.world.get::<&mut MoveDirection>(*entity) {
-                    *entity_dir = dir.clone();
+            ClientMessage::Movement { movement } => {
+                if let Ok(mut entity_movement) = self.world.get::<&mut MovementState>(*entity) {
+                    *entity_movement = movement.clone();
+
+                    let packet = ServerMessage::Movement {
+                        entity: *entity,
+                        movement,
+                    };
                     self.server.broadcast_message_except(
                         client_id,
                         DefaultChannel::ReliableUnordered,
-                        serialize(vec![ServerMessage::MoveDirection { entity: *entity, dir: new_dir, timestamp }]).unwrap(),
+                        serialize(vec![packet]).unwrap(),
                     );
                 }
             }
@@ -98,8 +103,9 @@ impl Server {
         let entity_id = self.world.spawn(PlayerBundle {
             player: Player,
             transform: Transform::new(pos),
-            direction: MoveDirection::None,
+            movement_state: MovementState { dir: Direction::None, timestamp: epoch_time() },
         });
+
         self.clients.insert(client_id, entity_id);
         self.server.send_message(
             client_id,
@@ -112,7 +118,7 @@ impl Server {
                     columns!(self.world, [
                         Player,
                         Transform,
-                        MoveDirection
+                        MovementState
                     ])
                 ),
             ]).unwrap()

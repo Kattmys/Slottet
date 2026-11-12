@@ -15,25 +15,24 @@ pub enum Direction {
     None,
 }
 
-impl From<&MoveDirection> for Vec2 {
-    fn from(dir: &MoveDirection) -> Self {
+impl From<&Direction> for Vec2 {
+    fn from(dir: &Direction) -> Self {
         match dir {
-            MoveDirection::North     => vec2(0., -1.),
-            MoveDirection::NorthEast => vec2(1., -1.),
-            MoveDirection::East      => vec2(1., 0.),
-            MoveDirection::SouthEast => vec2(1., 1.),
-            MoveDirection::South     => vec2(0., 1.),
-            MoveDirection::SouthWest => vec2(-1., 1.),
-            MoveDirection::West      => vec2(-1., 0.),
-            MoveDirection::NorthWest => vec2(-1., -1.),
-            MoveDirection::None      => vec2(0., 0.),
+            Direction::North     => vec2(0., -1.),
+            Direction::NorthEast => vec2(1., -1.),
+            Direction::East      => vec2(1., 0.),
+            Direction::SouthEast => vec2(1., 1.),
+            Direction::South     => vec2(0., 1.),
+            Direction::SouthWest => vec2(-1., 1.),
+            Direction::West      => vec2(-1., 0.),
+            Direction::NorthWest => vec2(-1., -1.),
+            Direction::None      => vec2(0., 0.),
         }
     }
 }
 
-pub type MoveDirection = Direction; // component
-
-pub struct MovementUpdate {
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MovementState {
     pub dir: Direction,
-    pub timestamp: Instant,
+    pub timestamp: u128,
 }

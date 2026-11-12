@@ -5,4 +5,4 @@ mod transform;
 pub use transform::Transform;
 
 mod direction;
-pub use direction::{ Direction, MoveDirection };
+pub use direction::{ Direction, MovementState };

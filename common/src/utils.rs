@@ -18,3 +18,12 @@ impl Counter {
         self.i
     }
 }
+
+use std::time::{ UNIX_EPOCH, SystemTime };
+
+pub fn epoch_time() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+}
