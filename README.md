@@ -1,2 +1,2 @@
-# slottet
+# Slottet
 Beredskap är inte valbart.
