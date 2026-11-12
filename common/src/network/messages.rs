@@ -26,9 +26,10 @@ pub struct Columns {
     pub ids: Vec<hecs::Entity>,
     pub Player: Column<components::Player>,
     pub Transform: Column<components::Transform>,
+    pub MoveDirection: Column<components::MoveDirection>,
 }
 
-pub const NUM_COLUMNS: u64 = 2;
+pub const NUM_COLUMNS: u64 = 3;
 
 #[macro_export]
 macro_rules! columns {

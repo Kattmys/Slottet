@@ -5,11 +5,9 @@ use hecs;
 use macroquad::math::Vec2;
 
 pub async fn update_movement(world: &mut hecs::World) {
-    // TODO move
-    const PLAYER_MOVEMENT_SPEED: f32 = 20.;
-
     for (transform, dir) in &mut world.query::<(&mut Transform, &MoveDirection)>() {
-        let dir_vec = Vec2::from(dir);
-        transform.pos += dir_vec * PLAYER_MOVEMENT_SPEED;
+        if let Some(dir) = Vec2::from(dir).try_normalize() {
+            transform.pos += dir * 5.;
+        }
     }
 }

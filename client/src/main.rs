@@ -32,6 +32,16 @@ struct Client {
     textures: TextureManager,
 }
 
+macro_rules! update_components {
+    ($world:expr, $columns:expr, [$($component:ident),*]) => {{
+        $(
+            for (id, obj) in $columns.$component {
+                $world.insert(id, (obj,)).unwrap();
+            }
+        )*
+    }}
+}
+
 impl Client {
     pub async fn connect(addr: String) -> Result<Self> {
         let (client, transport) = create_client(addr)?;
@@ -74,7 +84,7 @@ impl Client {
             if      up && left    { MoveDirection::NorthWest }
             else if up && right   { MoveDirection::NorthEast }
             else if down && left  { MoveDirection::SouthWest }
-            else if down && right { MoveDirection::SouthWest }
+            else if down && right { MoveDirection::SouthEast }
             else if up            { MoveDirection::North }
             else if right         { MoveDirection::East }
             else if down          { MoveDirection::South }
@@ -86,7 +96,7 @@ impl Client {
             match event {
                 Event::Attack  => println!("Attacking enemy..."),
 
-                // already handeled
+                // already handled
                 Event::GoUp | Event::GoLeft | Event::GoDown | Event::GoRight => {}
             }
         }
@@ -113,13 +123,7 @@ impl Client {
                     }
                 }
 
-                for (id, obj) in columns.Player {
-                    self.world.insert(id, (obj,)).unwrap();
-                }
-
-                for (id, obj) in columns.Transform {
-                    self.world.insert(id, (obj,)).unwrap();
-                }
+                update_components!(self.world, columns, [Player, Transform, MoveDirection]);
             }
         }
     }

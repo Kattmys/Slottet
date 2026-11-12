@@ -1,2 +1,2 @@
-pub mod movement;
+mod movement;
 pub use movement::update_movement;

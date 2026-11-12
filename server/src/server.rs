@@ -3,8 +3,10 @@ use common::{
     network::*,
     components::*,
     utils::{ Counter, CounterType },
+    systems::update_movement,
     columns,
 };
+
 use renet::{ ClientId, RenetServer, DefaultChannel, ServerEvent };
 use renet_netcode::NetcodeServerTransport;
 use std::time::{ Duration, Instant };
@@ -12,7 +14,7 @@ use std::collections::HashMap;
 use glam::vec2;
 
 const TICK_RATE: u64 = 60;
-const COLUMN_SEND_COUNTER: u64 = 20;
+const COLUMN_SEND_COUNTER: u64 = 2;
 
 pub struct Server {
     server: RenetServer,
@@ -30,15 +32,13 @@ impl Server {
     }
 
     pub async fn run(&mut self) -> Result<()> {
+        let mut delta = Duration::from_millis(0);
         let mut last_updated = Instant::now();
+
         let mut send_column_counter = Counter::new(COLUMN_SEND_COUNTER);
         let mut column_counter = Counter::new(NUM_COLUMNS);
 
         loop {
-            let now = Instant::now();
-            let delta = now - last_updated;
-            last_updated = now;
-
             let mut messages = Vec::new();
 
             if send_column_counter.step(1) == 0 {
@@ -48,33 +48,47 @@ impl Server {
             // TODO remove expect
             self.handle_network(delta, messages).await.expect("network error");
 
-            tokio::time::sleep(Duration::from_millis(1000/TICK_RATE)).await;
+            update_movement(&mut self.world).await;
+
+            let now = Instant::now();
+            delta = now - last_updated;
+            tokio::time::sleep(Duration::from_millis(1000/TICK_RATE).saturating_sub(delta)).await;
+            last_updated = now;
         }
     }
 
     async fn get_column_msg(&self, index: CounterType) -> ServerMessage {
-        debug_assert_eq!(NUM_COLUMNS, 2);
+        debug_assert_eq!(NUM_COLUMNS, 3);
         let columns = match index {
             0 => columns!(self.world, [Player]),
             1 => columns!(self.world, [Transform]),
+            2 => columns!(self.world, [MoveDirection]),
             _ => unreachable!()
         };
         ServerMessage::World(columns)
     }
 
-    async fn handle_msg(&mut self, _client_id: ClientId, _msg: ClientMessage) {
-        // match msg {
-        //     ClientMessage::MoveDirection(vec) {
-        //         if let Some(transform) = self.world.get_mut::<Transform>(client_id) {
-        //             transform.rot = vec;
-        //         }
-        //     }
-        // }
+    async fn handle_msg(&mut self, client_id: ClientId, msg: ClientMessage) {
+        let Some(entity) = self.clients.get(&client_id) else {
+            eprintln!("tried to handle message from invalid client {client_id}");
+            return
+        };
+        match msg {
+            ClientMessage::MoveDirection(new_dir) => {
+                if let Ok(mut dir) = self.world.get::<&mut MoveDirection>(*entity) {
+                    *dir = new_dir;
+                }
+            }
+        }
     }
 
     async fn handle_connect(&mut self, client_id: ClientId) {
         let pos = vec2(0.0, 0.0);
-        let entity_id = self.world.spawn((Player, Transform::new(pos)));
+        let entity_id = self.world.spawn(PlayerBundle {
+            player: Player,
+            transform: Transform::new(pos),
+            direction: MoveDirection::None,
+        });
         self.clients.insert(client_id, entity_id);
         self.server.send_message(
             client_id,
@@ -83,7 +97,13 @@ impl Server {
                 ServerMessage::InitialData {
                     entity: entity_id,
                 },
-                ServerMessage::World(columns!(self.world, [Player, Transform])),
+                ServerMessage::World(
+                    columns!(self.world, [
+                        Player,
+                        Transform,
+                        MoveDirection
+                    ])
+                ),
             ]).unwrap()
         );
     }
