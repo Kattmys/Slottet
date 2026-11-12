@@ -30,6 +30,8 @@ pub struct Columns {
     pub Transform: Column<components::Transform>,
 }
 
+pub const NUM_COLUMNS: u64 = 2;
+
 #[macro_export]
 macro_rules! columns {
     ($world:expr, [$($ident:ident),*]) => {{

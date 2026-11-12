@@ -13,7 +13,7 @@ async fn main() -> Result<()> {
     };
 
     println!("starting slottet server on {addr}...");
-    let server = Server::connect(addr.to_string())?;
+    let mut server = Server::connect(addr.to_string())?;
     server.run()
         .await
         .unwrap();
