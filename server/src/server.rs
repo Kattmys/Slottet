@@ -80,13 +80,13 @@ impl Server {
             return
         };
         match msg {
-            ClientMessage::MoveDirection(new_dir) => {
-                if let Ok(mut dir) = self.world.get::<&mut MoveDirection>(*entity) {
-                    *dir = new_dir.clone();
+            ClientMessage::MoveDirection { dir, timestamp } => {
+                if let Ok(mut entity_dir) = self.world.get::<&mut MoveDirection>(*entity) {
+                    *entity_dir = dir.clone();
                     self.server.broadcast_message_except(
                         client_id,
                         DefaultChannel::ReliableUnordered,
-                        serialize(vec![ServerMessage::MoveDirection { entity: *entity, dir: new_dir }]).unwrap(),
+                        serialize(vec![ServerMessage::MoveDirection { entity: *entity, dir: new_dir, timestamp }]).unwrap(),
                     );
                 }
             }

@@ -1,5 +1,6 @@
 use crate::components;
 use crate::components::MoveDirection;
+use crate::components::MovementUpdate;
 
 use serde::{ Serialize, Deserialize };
 
@@ -13,13 +14,16 @@ pub enum ServerMessage {
     MoveDirection {
         entity: hecs::Entity,
         dir: MoveDirection,
+        timestamp: f64,
     },
 }
 
 // from client
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientMessage {
-    MoveDirection(MoveDirection),
+    MoveDirection {
+        move: MovementUpdate,
+    },
 }
 
 type Column<T> = Vec<(hecs::Entity, T)>;

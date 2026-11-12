@@ -127,7 +127,7 @@ impl Client {
                 update_components!(self.world, columns, [Player, Transform, MoveDirection]);
             }
 
-            ServerMessage::MoveDirection { entity, dir } => {
+            ServerMessage::MoveDirection { entity, dir, timestamp } => {
                 if let Ok(mut entity_dir) = self.world.get::<&mut MoveDirection>(entity) {
                     *entity_dir = dir;
                 }

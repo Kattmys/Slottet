@@ -1,5 +1,6 @@
-use serde::{ Deserialize, Serialize };
 use macroquad::prelude::*;
+use std::time::Instant;
+use serde::{ Deserialize, Serialize };
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum Direction {
@@ -31,3 +32,8 @@ impl From<&MoveDirection> for Vec2 {
 }
 
 pub type MoveDirection = Direction; // component
+
+pub struct MovementUpdate {
+    pub dir: Direction,
+    pub timestamp: Instant,
+}
