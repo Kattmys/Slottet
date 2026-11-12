@@ -22,8 +22,9 @@ struct Client {
     transport: NetcodeClientTransport,
     world: hecs::World,
     player: hecs::Entity,
-    textures: TextureManager,
     keymap: KeyMap,
+    #[allow(dead_code)]
+    textures: TextureManager,
 }
 
 impl Client {

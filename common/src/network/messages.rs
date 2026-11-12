@@ -1,7 +1,6 @@
 use crate::components;
 use crate::components::direction::MoveDirection;
 
-use macroquad::math::{ Vec2 };
 use serde::{ Serialize, Deserialize };
 
 // from server
