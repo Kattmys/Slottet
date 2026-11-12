@@ -5,8 +5,9 @@ use crate::texture::TextureManager;
 use crate::keybinds::{ Event, KeyMap, load_keymap };
 use common::{
     Result,
-    network::*,
-    components::*,
+    network::{ ClientMessage, ServerMessage, create_client, RENET_CHANNELS, serialize, deserialize },
+    components::Transform,
+    components::direction::MoveDirection,
 };
 
 use macroquad::prelude::*;
@@ -58,36 +59,22 @@ impl Client {
             .collect();
 
         let mut messages = Vec::new();
-        // let mut dir = Vec2::ZERO;
-
-        let movement_events: HashSet<Event> = events.iter()
-            .cloned()
-            .filter_map(|e| {
-                match e {
-                    Event::GoUp | Event::GoLeft |
-                    Event::GoDown | Event::GoRight => Some(e),
-                    _ => None,
-                }
-            })
-            .collect();
 
         let dir = {
-            let up = events.contains(Event::GoUp);
-            let right = events.contains(Event::GoRight);
-            let down = events.contains(Event::GoDown);
-            let left = events.contains(Event::GoLeft);
+            let up    = events.contains(&&Event::GoUp);
+            let right = events.contains(&&Event::GoRight);
+            let down  = events.contains(&&Event::GoDown);
+            let left  = events.contains(&&Event::GoLeft);
 
-            match true {
-                up && left => Direction::NorthWest,
-                up && right => Direction::NorthEast,
-                down && left => Direction::SouthWest,
-                down && right => Direction::SouthWest,
-                up => Direction::North,
-                right => Direction::East,
-                down => Direction::South,
-                left => Direction::West,
-                !(up || right || down || left) => Direction::None
-            }
+            if      up && left    { MoveDirection::NorthWest }
+            else if up && right   { MoveDirection::NorthEast }
+            else if down && left  { MoveDirection::SouthWest }
+            else if down && right { MoveDirection::SouthWest }
+            else if up            { MoveDirection::North }
+            else if right         { MoveDirection::East }
+            else if down          { MoveDirection::South }
+            else if left          { MoveDirection::West }
+            else { MoveDirection::None }
         };
 
         for event in events {
@@ -99,9 +86,9 @@ impl Client {
             }
         }
 
-        if let Some(transform) = self.world.get::<&mut Transform>(self.player) {
-            if !matches!(transform.dir, dir) {
-                transform.dir = dir;
+        if let Ok(mut player_dir) = self.world.get::<&mut MoveDirection>(self.player) {
+            if !matches!(player_dir, ref dir) {
+                *player_dir = dir.clone();
                 messages.push(ClientMessage::MoveDirection(dir));
             }
         }
@@ -137,7 +124,7 @@ impl Client {
         self.transport.update(delta, &mut self.client).unwrap();
 
         if self.client.is_connected() {
-            if !messages.empty() {
+            if !messages.is_empty() {
                 self.client.send_message(
                     DefaultChannel::ReliableOrdered,
                     serialize(messages).unwrap()
@@ -146,7 +133,7 @@ impl Client {
 
             for channel in RENET_CHANNELS {
                 while let Some(ref data) = self.client.receive_message(*channel) {
-                    match deserialize::<ServerMessages>(data) {
+                    match deserialize::<Vec<ServerMessage>>(data) {
                         Ok(messages) => {
                             for msg in messages {
                                 self.handle_msg(msg).await;

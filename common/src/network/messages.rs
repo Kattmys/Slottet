@@ -1,4 +1,6 @@
 use crate::components;
+use crate::components::direction::MoveDirection;
+
 use macroquad::math::{ Vec2 };
 use serde::{ Serialize, Deserialize };
 
@@ -17,7 +19,7 @@ pub enum ServerMessage {
 // from client
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientMessage {
-    MoveDirection(Direction),
+    MoveDirection(MoveDirection),
 }
 
 type Column<T> = Vec<(hecs::Entity, T)>;

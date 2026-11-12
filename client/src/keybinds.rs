@@ -1,7 +1,7 @@
 use macroquad::input::KeyCode;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Event {
     Attack,
 
