@@ -1,5 +1,4 @@
 use macroquad::prelude::*;
-use std::time::Instant;
 use serde::{ Deserialize, Serialize };
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -34,5 +33,4 @@ impl From<&Direction> for Vec2 {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MovementState {
     pub dir: Direction,
-    pub timestamp: u128,
 }

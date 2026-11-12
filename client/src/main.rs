@@ -3,7 +3,7 @@ mod keybinds;
 
 use crate::texture::TextureManager;
 use crate::keybinds::{ Event, KeyMap, load_keymap };
-use common::Result;
+use common::{ Result, LATENCY };
 use common::network::{
     ClientMessage,
     ServerMessage,
@@ -12,9 +12,8 @@ use common::network::{
     serialize,
     deserialize,
 };
-use common::utils::epoch_time;
 use common::components::{ Transform, MovementState, Direction };
-use common::systems::update_movement;
+use common::{ systems, utils };
 
 use macroquad::prelude::*;
 use std::env;
@@ -29,6 +28,7 @@ struct Client {
     player: hecs::Entity,
     keymap: KeyMap,
     textures: TextureManager,
+    message_buffer: Vec<ServerMessage>,
 }
 
 macro_rules! update_components {
@@ -49,6 +49,7 @@ impl Client {
 
         let textures = TextureManager::init("assets").await?;
         let keymap = load_keymap();
+        let message_buffer = Vec::new();
 
         Ok(Self {
             client,
@@ -57,13 +58,31 @@ impl Client {
 			player,
 			textures,
 			keymap,
+            message_buffer,
         })
     }
 
     pub async fn update(&mut self, delta: Duration) {
         let messages = self.handle_input().await;
         self.handle_network(delta, messages).await;
-        update_movement(&mut self.world, delta).await;
+        let now = utils::epoch_time();
+        for (i, msg) in self.message_buffer.iter().enumerate() {
+            match msg {
+                ServerMessage::Movement { entity, movement, timestamp } => {
+                    let dt = now - timestamp;
+                    if dt >= LATENCY {
+                        println!("{dt}");
+                        if let Ok(mut move_state) = self.world.get::<&mut MovementState>(*entity) {
+                            *move_state = movement.clone();
+                        }
+                        self.message_buffer.swap_remove(i);
+                        break
+                    }
+                }
+                _ => {}
+            }
+        }
+        systems::update_movement(&mut self.world, delta).await;
     }
 
     async fn handle_input(&mut self) -> Vec<ClientMessage> {
@@ -104,10 +123,8 @@ impl Client {
             if !(move_state.dir == dir) {
                 move_state.dir = dir.clone();
                 messages.push(ClientMessage::Movement {
-                    movement: MovementState {
-                        dir,
-                        timestamp: epoch_time(),
-                    }
+                    movement: MovementState { dir },
+                    timestamp: utils::epoch_time(),
                 });
             }
         }
@@ -128,13 +145,29 @@ impl Client {
                     }
                 }
 
-                update_components!(self.world, columns, [Player, Transform, MovementState]);
+                update_components!(self.world, columns, [
+                    Player,
+                    MovementState
+                ]);
+
+                for (id, transform) in columns.Transform {
+                    let do_move = id != self.player || match self.world.get::<&Transform>(self.player) {
+                        Err(_) => true,
+                        Ok(_entity_transform) => {
+                            // TODO check diff
+                            // println!("diff: {}", transform.pos.distance(entity_transform.pos));
+                            false
+                        }
+                    };
+
+                    if do_move {
+                        self.world.insert(id, (transform,)).unwrap();
+                    }
+                }
             }
 
-            ServerMessage::Movement { entity, movement } => {
-                if let Ok(mut move_state) = self.world.get::<&mut MovementState>(entity) {
-                    *move_state = movement;
-                }
+            ServerMessage::Movement { .. } => {
+                self.message_buffer.push(msg);
             }
         }
     }

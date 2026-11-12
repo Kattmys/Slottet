@@ -13,6 +13,7 @@ pub enum ServerMessage {
     Movement {
         entity: hecs::Entity,
         movement: MovementState,
+        timestamp: u128,
     },
 }
 
@@ -21,6 +22,7 @@ pub enum ServerMessage {
 pub enum ClientMessage {
     Movement {
         movement: MovementState,
+        timestamp: u128,
     },
 }
 

@@ -1,9 +1,10 @@
 use common::{
     Result,
+    LATENCY,
     network::*,
     components::*,
-    utils::{ Counter, CounterType, epoch_time },
-    systems::update_movement,
+    utils::{ self, Counter, CounterType },
+    systems,
     columns,
 };
 
@@ -13,14 +14,15 @@ use std::time::{ Duration, Instant };
 use std::collections::HashMap;
 use glam::vec2;
 
-const TICK_RATE: f64 = 60.;
-const COLUMN_SEND_COUNTER: u64 = 10;
+const TICK_RATE: f64 = 120.;
+const COLUMN_SEND_COUNTER: u64 = 20;
 
 pub struct Server {
     server: RenetServer,
     transport: NetcodeServerTransport,
     world: hecs::World,
     clients: HashMap<ClientId, hecs::Entity>,
+    message_buffer: Vec<(hecs::Entity, ClientMessage)>,
 }
 
 impl Server {
@@ -28,7 +30,15 @@ impl Server {
         let (server, transport) = create_server(addr)?;
         let world = hecs::World::new();
         let clients = HashMap::new();
-        Ok(Self { server, transport, world, clients })
+        let message_buffer = Vec::new();
+
+        Ok(Self {
+            server,
+            transport,
+            world,
+            clients,
+            message_buffer,
+        })
     }
 
     pub async fn run(&mut self) -> Result<()> {
@@ -36,8 +46,8 @@ impl Server {
         let mut column_counter = Counter::new(NUM_COLUMNS);
 
         let mut last_updated = Instant::now();
-        let mut now = Instant::now();
-        let mut delta = now - last_updated;
+        #[allow(unused_assignments)]
+        let mut delta = Duration::ZERO;
 
         loop {
             let timer = tokio::spawn(async {
@@ -55,11 +65,11 @@ impl Server {
 
             // TODO remove expect
             self.handle_network(delta, messages).await.expect("network error");
-
-            update_movement(&mut self.world, delta).await;
+            self.iterate_msg_buffer().await;
+            systems::update_movement(&mut self.world, delta).await;
 
             // tokio::time::sleep(Duration::from_secs_f64(1.0/TICK_RATE).saturating_sub(delta)).await;
-            timer.await;
+            let _ = timer.await;
         }
     }
 
@@ -74,26 +84,45 @@ impl Server {
         ServerMessage::World(columns)
     }
 
+    async fn iterate_msg_buffer(&mut self) {
+        let now = utils::epoch_time();
+        for (i, (entity, msg)) in self.message_buffer.iter().enumerate() {
+            match msg {
+                ClientMessage::Movement { movement, timestamp } => {
+                    let dt = now - timestamp;
+                    if dt >= LATENCY {
+                        println!("{dt}");
+                        if let Ok(mut entity_movement) = self.world.get::<&mut MovementState>(*entity) {
+                            *entity_movement = movement.clone();
+                        }
+                        self.message_buffer.swap_remove(i);
+                        break
+                    }
+                }
+            }
+        }
+    }
+
     async fn handle_msg(&mut self, client_id: ClientId, msg: ClientMessage) {
         let Some(entity) = self.clients.get(&client_id) else {
             eprintln!("tried to handle message from invalid client {client_id}");
             return
         };
         match msg {
-            ClientMessage::Movement { movement } => {
-                if let Ok(mut entity_movement) = self.world.get::<&mut MovementState>(*entity) {
-                    *entity_movement = movement.clone();
+            ClientMessage::Movement { ref movement, timestamp } => {
+                let packet = ServerMessage::Movement {
+                    entity: *entity,
+                    movement: movement.clone(),
+                    timestamp,
+                };
 
-                    let packet = ServerMessage::Movement {
-                        entity: *entity,
-                        movement,
-                    };
-                    self.server.broadcast_message_except(
-                        client_id,
-                        DefaultChannel::ReliableUnordered,
-                        serialize(vec![packet]).unwrap(),
-                    );
-                }
+                self.server.broadcast_message_except(
+                    client_id,
+                    DefaultChannel::ReliableUnordered,
+                    serialize(vec![packet]).unwrap(),
+                );
+
+                self.message_buffer.push((*entity, msg));
             }
         }
     }
@@ -103,7 +132,9 @@ impl Server {
         let entity_id = self.world.spawn(PlayerBundle {
             player: Player,
             transform: Transform::new(pos),
-            movement_state: MovementState { dir: Direction::None, timestamp: epoch_time() },
+            movement_state: MovementState {
+                dir: Direction::None,
+            },
         });
 
         self.clients.insert(client_id, entity_id);
