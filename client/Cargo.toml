@@ -11,4 +11,3 @@ renet = "2.0.1"
 renet_netcode = "2.0.1"
 serde = { version = "1.0.229", features = ["derive"] }
 hecs = { version = "0.11.2", features = ["serde"] }
-lazy_static = "1.5.1"

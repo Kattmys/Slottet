@@ -111,7 +111,6 @@ dependencies = [
  "bincode",
  "common",
  "hecs",
- "lazy_static",
  "macroquad",
  "renet",
  "renet_netcode",
@@ -305,12 +304,6 @@ checksum = "879f10e63c20629ecabbb64a8010319738c66a5cd0c29b02d63d272b03751d01"
 dependencies = [
  "generic-array",
 ]
-
-[[package]]
-name = "lazy_static"
-version = "1.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
 
 [[package]]
 name = "libc"

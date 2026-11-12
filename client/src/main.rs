@@ -1,6 +1,8 @@
 pub mod texture;
+pub mod keybinds;
 
 use crate::texture::TextureManager;
+use crate::keybinds::{ Event, KeyMap, load_keymap };
 use common::{
     Result,
     network::*,
@@ -10,7 +12,7 @@ use common::{
 use macroquad::prelude::*;
 use std::env;
 use std::time::Duration;
-use renet::RenetClient;
+use renet::{ RenetClient, DefaultChannel };
 use renet_netcode::NetcodeClientTransport;
 
 struct Client {
@@ -19,21 +21,65 @@ struct Client {
     world: hecs::World,
     player: hecs::Entity,
     textures: TextureManager,
+    keymap: KeyMap,
 }
 
 impl Client {
-    async fn connect(addr: String) -> Result<Self> {
+    pub async fn connect(addr: String) -> Result<Self> {
         let (client, transport) = create_client(addr)?;
         let world = hecs::World::new();
         let player = hecs::Entity::DANGLING;
 
         let textures = TextureManager::init("assets").await?;
+        let keymap = load_keymap();
 
-        Ok(Self { client, transport, world, player, textures })
+        Ok(Self {
+            client,
+			transport,
+			world,
+			player,
+			textures,
+			keymap,
+        })
     }
 
-    async fn update(&mut self, delta: Duration) {
-        self.handle_network(delta).await;
+    pub async fn update(&mut self, delta: Duration) {
+        let messages = self.handle_input().await;
+        self.handle_network(delta, messages).await;
+    }
+
+    async fn handle_input(&mut self) -> Vec<ClientMessage> {
+        // TODO move
+        const PLAYER_MOVEMENT_SPEED: f32 = 20.;
+
+        let events: Vec<_> = get_keys_down()
+            .iter()
+            .filter_map(|key| self.keymap.get(key))
+            .collect();
+
+        let mut messages = Vec::new();
+        let mut dir = Vec2::ZERO;
+
+        for event in events {
+            match event {
+                Event::Attack  => println!("Attacking enemy..."),
+                Event::GoUp    => dir.y =  1.0,
+                Event::GoLeft  => dir.x = -1.0,
+                Event::GoDown  => dir.y = -1.0,
+                Event::GoRight => dir.x =  1.0,
+            }
+        }
+
+        match (dir, self.world.get::<&mut Transform>(self.player)) {
+            (Vec2::ZERO, _) => {}
+            (_, Ok(ref mut transform)) => {
+                transform.pos += dir.normalize() * PLAYER_MOVEMENT_SPEED;
+                messages.push( ClientMessage::Direction(dir) );
+            }
+            _ => {}
+        }
+
+        messages
     }
 
     async fn handle_msg(&mut self, msg: ServerMessage) {
@@ -59,14 +105,15 @@ impl Client {
         }
     }
 
-    async fn handle_network(&mut self, delta: Duration) {
+    async fn handle_network(&mut self, delta: Duration, messages: Vec<ClientMessage>) {
         self.client.update(delta);
         self.transport.update(delta, &mut self.client).unwrap();
 
         if self.client.is_connected() {
-            // self.client.send_message(DefaultChannel::ReliableOrdered,
-            //     serialize(send_msgs).unwrap()
-            // );
+            self.client.send_message(
+                DefaultChannel::ReliableOrdered,
+                serialize(messages).unwrap()
+            );
 
             for channel in RENET_CHANNELS {
                 while let Some(ref data) = self.client.receive_message(*channel) {
@@ -85,7 +132,7 @@ impl Client {
         self.transport.send_packets(&mut self.client).unwrap();
     }
 
-    async fn render(&self) {
+    pub async fn render(&self) {
         clear_background(LIGHTGRAY);
 
         if !self.client.is_connected() {
@@ -93,11 +140,11 @@ impl Client {
         }
 
         let viewport_offset = match self.world.get::<&Transform>(self.player) {
-            Ok(player_transform) =>
-                player_transform.pos - vec2(
-                    screen_width(),
-                    screen_height()
-                ) / 2.0,
+            Ok(player_transform) => {
+                player_transform.pos
+                - vec2(screen_width(), screen_height())
+                / 2.0
+            }
             Err(_) => Vec2::ZERO,
         };
 

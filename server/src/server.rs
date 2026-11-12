@@ -58,7 +58,9 @@ impl Server {
                 }
                 ServerEvent::ClientDisconnected { client_id, reason } => {
                     println!("client {client_id}: disconnected, reason: '{reason}'");
-                    self.clients.remove(&client_id);
+                    // TODO remove unwraps
+                    let entity = self.clients.remove(&client_id).unwrap();
+                    self.world.despawn(entity).unwrap();
                 }
             }
         }

@@ -1,14 +1,26 @@
-use macroquad::input::{ KeyCode };
+use macroquad::input::KeyCode;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Event {
-    Jump,
+    Attack,
+
+    GoUp,
+    GoLeft,
+    GoDown,
+    GoRight,
 }
 
-lazy_static! {
-    static ref keymap: HashMap<KeyCode, Event> = {
-        HashMap::from([
-            (KeyCode::Space, Event::Jump),
-        ])
-    };
+pub type KeyMap = HashMap<KeyCode, Event>;
+
+#[inline]
+pub fn load_keymap() -> KeyMap {
+    HashMap::from([
+        (KeyCode::Space, Event::Attack),
+
+        (KeyCode::W, Event::GoUp),
+        (KeyCode::A, Event::GoLeft),
+        (KeyCode::S, Event::GoDown),
+        (KeyCode::D, Event::GoRight),
+    ])
 }
