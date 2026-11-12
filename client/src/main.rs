@@ -8,6 +8,7 @@ use common::{
     network::{ ClientMessage, ServerMessage, create_client, RENET_CHANNELS, serialize, deserialize },
     components::Transform,
     components::direction::MoveDirection,
+    systems::update_movement,
 };
 
 use macroquad::prelude::*;
@@ -47,12 +48,10 @@ impl Client {
     pub async fn update(&mut self, delta: Duration) {
         let messages = self.handle_input().await;
         self.handle_network(delta, messages).await;
+        update_movement(&mut self.world).await;
     }
 
     async fn handle_input(&mut self) -> Vec<ClientMessage> {
-        // TODO move
-        const PLAYER_MOVEMENT_SPEED: f32 = 20.;
-
         let events: Vec<_> = get_keys_down()
             .iter()
             .filter_map(|key| self.keymap.get(key))
@@ -87,7 +86,7 @@ impl Client {
         }
 
         if let Ok(mut player_dir) = self.world.get::<&mut MoveDirection>(self.player) {
-            if !matches!(player_dir, ref dir) {
+            if !(*player_dir == dir) {
                 *player_dir = dir.clone();
                 messages.push(ClientMessage::MoveDirection(dir));
             }
