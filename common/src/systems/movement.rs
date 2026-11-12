@@ -1,5 +1,5 @@
 use crate::components::Transform;
-use crate::components::direction::MoveDirection;
+use crate::components::MoveDirection;
 
 use hecs;
 use macroquad::math::Vec2;

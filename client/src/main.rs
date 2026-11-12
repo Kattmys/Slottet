@@ -1,13 +1,19 @@
-pub mod texture;
-pub mod keybinds;
+mod texture;
+mod keybinds;
 
 use crate::texture::TextureManager;
 use crate::keybinds::{ Event, KeyMap, load_keymap };
 use common::{
     Result,
-    network::{ ClientMessage, ServerMessage, create_client, RENET_CHANNELS, serialize, deserialize },
-    components::Transform,
-    components::direction::MoveDirection,
+    network::{
+        ClientMessage,
+        ServerMessage,
+        create_client,
+        RENET_CHANNELS,
+        serialize,
+        deserialize,
+    },
+    components::{ Transform, MoveDirection },
     systems::update_movement,
 };
 
@@ -23,7 +29,6 @@ struct Client {
     world: hecs::World,
     player: hecs::Entity,
     keymap: KeyMap,
-    #[allow(dead_code)]
     textures: TextureManager,
 }
 

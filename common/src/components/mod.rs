@@ -1,8 +1,8 @@
-pub mod player;
-pub use player::Player;
+mod player;
+pub use player::{ Player, PlayerBundle };
 
-pub mod transform;
+mod transform;
 pub use transform::Transform;
 
-pub mod direction;
-// pub use direction::{ Direction, MoveDirection };
+mod direction;
+pub use direction::{ Direction, MoveDirection };

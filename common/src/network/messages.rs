@@ -1,5 +1,5 @@
 use crate::components;
-use crate::components::direction::MoveDirection;
+use crate::components::MoveDirection;
 
 use serde::{ Serialize, Deserialize };
 
