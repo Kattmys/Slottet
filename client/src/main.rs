@@ -205,7 +205,10 @@ impl Client {
         clear_background(LIGHTGRAY);
 
         if !self.client.is_connected() {
-            draw_text("Connecting...", 10.0, 40.0, 40.0, BLACK);
+            let text = "Connecting...";
+            const FONT_WIDTH: f32 = 17.5;
+            const FONT_HEIGHT: f32 = 20.0;
+            draw_text(text, (screen_width() - text.len() as f32 * FONT_WIDTH) / 2., (screen_height() + FONT_HEIGHT) / 2., 40.0, BLACK);
         }
 
         let viewport_offset = match self.world.get::<&Transform>(self.player) {
