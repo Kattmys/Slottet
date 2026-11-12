@@ -58,25 +58,52 @@ impl Client {
             .collect();
 
         let mut messages = Vec::new();
-        let mut dir = Vec2::ZERO;
+        // let mut dir = Vec2::ZERO;
+
+        let movement_events: HashSet<Event> = events.iter()
+            .cloned()
+            .filter_map(|e| {
+                match e {
+                    Event::GoUp | Event::GoLeft |
+                    Event::GoDown | Event::GoRight => Some(e),
+                    _ => None,
+                }
+            })
+            .collect();
+
+        let dir = {
+            let up = events.contains(Event::GoUp);
+            let right = events.contains(Event::GoRight);
+            let down = events.contains(Event::GoDown);
+            let left = events.contains(Event::GoLeft);
+
+            match true {
+                up && left => Direction::NorthWest,
+                up && right => Direction::NorthEast,
+                down && left => Direction::SouthWest,
+                down && right => Direction::SouthWest,
+                up => Direction::North,
+                right => Direction::East,
+                down => Direction::South,
+                left => Direction::West,
+                !(up || right || down || left) => Direction::None
+            }
+        };
 
         for event in events {
             match event {
                 Event::Attack  => println!("Attacking enemy..."),
-                Event::GoUp    => dir.y =  1.0,
-                Event::GoLeft  => dir.x = -1.0,
-                Event::GoDown  => dir.y = -1.0,
-                Event::GoRight => dir.x =  1.0,
+
+                // already handeled
+                Event::GoUp | Event::GoLeft | Event::GoDown | Event::GoRight => {}
             }
         }
 
-        match (dir, self.world.get::<&mut Transform>(self.player)) {
-            (Vec2::ZERO, _) => {}
-            (_, Ok(ref mut transform)) => {
-                transform.pos += dir.normalize() * PLAYER_MOVEMENT_SPEED;
-                messages.push( ClientMessage::Direction(dir) );
+        if let Some(transform) = self.world.get::<&mut Transform>(self.player) {
+            if !matches!(transform.dir, dir) {
+                transform.dir = dir;
+                messages.push(ClientMessage::MoveDirection(dir));
             }
-            _ => {}
         }
 
         messages
@@ -110,10 +137,12 @@ impl Client {
         self.transport.update(delta, &mut self.client).unwrap();
 
         if self.client.is_connected() {
-            self.client.send_message(
-                DefaultChannel::ReliableOrdered,
-                serialize(messages).unwrap()
-            );
+            if !messages.empty() {
+                self.client.send_message(
+                    DefaultChannel::ReliableOrdered,
+                    serialize(messages).unwrap()
+                );
+            }
 
             for channel in RENET_CHANNELS {
                 while let Some(ref data) = self.client.receive_message(*channel) {

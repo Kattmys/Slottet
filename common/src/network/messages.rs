@@ -17,7 +17,7 @@ pub enum ServerMessage {
 // from client
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientMessage {
-    MoveDirection(Vec2),
+    MoveDirection(Direction),
 }
 
 type Column<T> = Vec<(hecs::Entity, T)>;
