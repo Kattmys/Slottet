@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use glam::vec2;
 
 const TICK_RATE: u64 = 60;
-const COLUMN_SEND_COUNTER: u64 = 2;
+const COLUMN_SEND_COUNTER: u64 = 10;
 
 pub struct Server {
     server: RenetServer,
@@ -48,7 +48,7 @@ impl Server {
             // TODO remove expect
             self.handle_network(delta, messages).await.expect("network error");
 
-            update_movement(&mut self.world).await;
+            update_movement(&mut self.world, delta).await;
 
             let now = Instant::now();
             delta = now - last_updated;
@@ -76,7 +76,16 @@ impl Server {
         match msg {
             ClientMessage::MoveDirection(new_dir) => {
                 if let Ok(mut dir) = self.world.get::<&mut MoveDirection>(*entity) {
-                    *dir = new_dir;
+                    *dir = new_dir.clone();
+                    self.server.broadcast_message_except(
+                        client_id,
+                        DefaultChannel::ReliableUnordered,
+                        serialize(vec![ServerMessage::World(Columns {
+                            ids: vec![*entity],
+                            MoveDirection: vec![(*entity, new_dir)],
+                            ..Default::default()
+                        })]).unwrap(),
+                    );
                 }
             }
         }

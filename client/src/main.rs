@@ -64,7 +64,7 @@ impl Client {
     pub async fn update(&mut self, delta: Duration) {
         let messages = self.handle_input().await;
         self.handle_network(delta, messages).await;
-        update_movement(&mut self.world).await;
+        update_movement(&mut self.world, delta).await;
     }
 
     async fn handle_input(&mut self) -> Vec<ClientMessage> {
