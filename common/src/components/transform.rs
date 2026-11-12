@@ -1,4 +1,4 @@
-use super::*;
+use serde::{ Deserialize, Serialize };
 use macroquad::math::{ Vec2 };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
