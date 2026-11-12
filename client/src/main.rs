@@ -116,6 +116,7 @@ impl Client {
             ServerMessage::InitialData { entity } => {
                 self.player = entity;
             }
+
             ServerMessage::World(columns) => {
                 for id in columns.ids {
                     if !self.world.contains(id) {
@@ -124,6 +125,12 @@ impl Client {
                 }
 
                 update_components!(self.world, columns, [Player, Transform, MoveDirection]);
+            }
+
+            ServerMessage::MoveDirection { entity, dir } => {
+                if let Ok(mut entity_dir) = self.world.get::<&mut MoveDirection>(entity) {
+                    *entity_dir = dir;
+                }
             }
         }
     }

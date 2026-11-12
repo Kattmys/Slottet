@@ -10,6 +10,10 @@ pub enum ServerMessage {
     InitialData {
         entity: hecs::Entity,
     },
+    MoveDirection {
+        entity: hecs::Entity,
+        dir: MoveDirection,
+    },
 }
 
 // from client

@@ -86,11 +86,7 @@ impl Server {
                     self.server.broadcast_message_except(
                         client_id,
                         DefaultChannel::ReliableUnordered,
-                        serialize(vec![ServerMessage::World(Columns {
-                            ids: vec![*entity],
-                            MoveDirection: vec![(*entity, new_dir)],
-                            ..Default::default()
-                        })]).unwrap(),
+                        serialize(vec![ServerMessage::MoveDirection { entity: *entity, dir: new_dir }]).unwrap(),
                     );
                 }
             }
