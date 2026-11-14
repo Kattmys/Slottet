@@ -3,7 +3,7 @@ mod keybinds;
 
 use crate::texture::TextureManager;
 use crate::keybinds::{ Event, KeyMap, load_keymap };
-use common::{ Result, LATENCY };
+use common::{ Result, LATENCY, sleep_until };
 use common::network::{
     ClientMessage,
     ServerMessage,
@@ -18,17 +18,18 @@ use common::{ systems, utils };
 use macroquad::prelude::*;
 use std::env;
 use std::time::Duration;
+use std::sync::{ Arc, Mutex };
 use renet::{ RenetClient, DefaultChannel };
 use renet_netcode::NetcodeClientTransport;
 
 struct Client {
     client: RenetClient,
     transport: NetcodeClientTransport,
-    world: hecs::World,
+    world: Arc<Mutex<hecs::World>>,
     player: hecs::Entity,
     keymap: KeyMap,
     textures: TextureManager,
-    message_buffer: Vec<ServerMessage>,
+    // message_buffer: Vec<ServerMessage>,
 }
 
 macro_rules! update_components {
@@ -42,14 +43,14 @@ macro_rules! update_components {
 }
 
 impl Client {
-    pub async fn connect(addr: String) -> Result<Self> {
+    async fn connect(addr: String) -> Result<Self> {
         let (client, transport) = create_client(addr)?;
-        let world = hecs::World::new();
+        let world = Arc::new(Mutex::new(hecs::World::new()));
         let player = hecs::Entity::DANGLING;
 
         let textures = TextureManager::init("assets").await?;
         let keymap = load_keymap();
-        let message_buffer = Vec::new();
+        // let message_buffer = Vec::new();
 
         Ok(Self {
             client,
@@ -58,31 +59,34 @@ impl Client {
 			player,
 			textures,
 			keymap,
-            message_buffer,
+            // message_buffer,
         })
     }
 
-    pub async fn update(&mut self, delta: Duration) {
+    async fn run(&mut self) {
+        let mut dt_accumulator = 0.0;
+
+        loop {
+            let delta = get_frame_time();
+            dt_accumulator += delta;
+
+            self.update(Duration::from_secs_f32(delta)).await;
+
+            while dt_accumulator >= 1.0 / 60.0 {
+                let mut world = self.world.lock().unwrap();
+                systems::update_movement(&mut world, Duration::from_secs_f32(delta)).await;
+                dt_accumulator -= 1.0 / 60.0;
+            }
+
+            self.render().await;
+
+            next_frame().await
+        }
+    }
+
+    async fn update(&mut self, delta: Duration) {
         let messages = self.handle_input().await;
         self.handle_network(delta, messages).await;
-        let now = utils::epoch_time();
-        for (i, msg) in self.message_buffer.iter().enumerate() {
-            match msg {
-                ServerMessage::Movement { entity, movement, timestamp } => {
-                    let dt = now - timestamp;
-                    if dt >= LATENCY {
-                        println!("{dt}");
-                        if let Ok(mut move_state) = self.world.get::<&mut MovementState>(*entity) {
-                            *move_state = movement.clone();
-                        }
-                        self.message_buffer.swap_remove(i);
-                        break
-                    }
-                }
-                _ => {}
-            }
-        }
-        systems::update_movement(&mut self.world, delta).await;
     }
 
     async fn handle_input(&mut self) -> Vec<ClientMessage> {
@@ -119,12 +123,14 @@ impl Client {
             }
         }
 
-        if let Ok(mut move_state) = self.world.get::<&mut MovementState>(self.player) {
+        let world = self.world.lock().unwrap();
+
+        if let Ok(mut move_state) = world.get::<&mut MovementState>(self.player) {
             if !(move_state.dir == dir) {
                 move_state.dir = dir.clone();
                 messages.push(ClientMessage::Movement {
                     movement: MovementState { dir },
-                    timestamp: utils::epoch_time(),
+                    timestamp: utils::epoch_time_millis(),
                 });
             }
         }
@@ -133,6 +139,8 @@ impl Client {
     }
 
     async fn handle_msg(&mut self, msg: ServerMessage) {
+        let mut world = self.world.lock().unwrap();
+
         match msg {
             ServerMessage::InitialData { entity } => {
                 self.player = entity;
@@ -140,18 +148,18 @@ impl Client {
 
             ServerMessage::World(columns) => {
                 for id in columns.ids {
-                    if !self.world.contains(id) {
-                        self.world.spawn_at(id, ());
+                    if !world.contains(id) {
+                        world.spawn_at(id, ());
                     }
                 }
 
-                update_components!(self.world, columns, [
+                update_components!(world, columns, [
                     Player,
                     MovementState
                 ]);
 
                 for (id, transform) in columns.Transform {
-                    let do_move = id != self.player || match self.world.get::<&Transform>(self.player) {
+                    let do_move = id != self.player || match world.get::<&Transform>(self.player) {
                         Err(_) => true,
                         Ok(_entity_transform) => {
                             // TODO check diff
@@ -161,13 +169,20 @@ impl Client {
                     };
 
                     if do_move {
-                        self.world.insert(id, (transform,)).unwrap();
+                        world.insert(id, (transform,)).unwrap();
                     }
                 }
             }
 
-            ServerMessage::Movement { .. } => {
-                self.message_buffer.push(msg);
+            ServerMessage::Movement { entity, movement, timestamp } => {
+                let world = self.world.clone();
+                std::thread::spawn(move || {
+                    sleep_until!(thread, timestamp + LATENCY);
+                    let world = world.lock().unwrap();
+                    if let Ok(mut entity_movement) = world.get::<&mut MovementState>(entity) {
+                        *entity_movement = movement;
+                    }
+                });
             }
         }
     }
@@ -201,7 +216,9 @@ impl Client {
         self.transport.send_packets(&mut self.client).unwrap();
     }
 
-    pub async fn render(&self) {
+    async fn render(&self) {
+        let world = self.world.lock().unwrap();
+
         clear_background(LIGHTGRAY);
 
         if !self.client.is_connected() {
@@ -211,7 +228,7 @@ impl Client {
             draw_text(text, (screen_width() - text.len() as f32 * FONT_WIDTH) / 2., (screen_height() + FONT_HEIGHT) / 2., 40.0, BLACK);
         }
 
-        let viewport_offset = match self.world.get::<&Transform>(self.player) {
+        let viewport_offset = match world.get::<&Transform>(self.player) {
             Ok(player_transform) => {
                 player_transform.pos
                 - vec2(screen_width(), screen_height())
@@ -221,7 +238,7 @@ impl Client {
         };
 
         for (entity, transform) in
-            self.world.query::<(hecs::Entity, &Transform)>().iter()
+            world.query::<(hecs::Entity, &Transform)>().iter()
         {
             let color = if entity == self.player { GREEN } else { RED };
 
@@ -255,14 +272,7 @@ async fn main() -> Result<()> {
     };
 
     let mut client = Client::connect(addr.clone()).await?;
+    client.run().await;
 
-    loop {
-        let delta = get_frame_time();
-
-        client.update(Duration::from_secs_f32(delta)).await;
-
-        client.render().await;
-
-        next_frame().await
-    }
+    Ok(())
 }

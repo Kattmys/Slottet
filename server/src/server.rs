@@ -3,41 +3,41 @@ use common::{
     LATENCY,
     network::*,
     components::*,
-    utils::{ self, Counter, CounterType },
+    utils::{ Counter, CounterType },
     systems,
     columns,
+    sleep_until,
 };
 
+use std::time::Duration;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use renet::{ ClientId, RenetServer, DefaultChannel, ServerEvent };
 use renet_netcode::NetcodeServerTransport;
-use std::time::{ Duration, Instant };
-use std::collections::HashMap;
 use glam::vec2;
 
-const TICK_RATE: f64 = 120.;
+const TICK_RATE: f32 = 60.0;
 const COLUMN_SEND_COUNTER: u64 = 20;
 
 pub struct Server {
     server: RenetServer,
     transport: NetcodeServerTransport,
-    world: hecs::World,
+    world: Arc<Mutex<hecs::World>>,
     clients: HashMap<ClientId, hecs::Entity>,
-    message_buffer: Vec<(hecs::Entity, ClientMessage)>,
 }
 
 impl Server {
     pub fn connect(addr: String) -> Result<Self> {
         let (server, transport) = create_server(addr)?;
-        let world = hecs::World::new();
+        let world = Arc::new(Mutex::new(hecs::World::new()));
         let clients = HashMap::new();
-        let message_buffer = Vec::new();
 
         Ok(Self {
             server,
             transport,
             world,
             clients,
-            message_buffer,
         })
     }
 
@@ -45,62 +45,37 @@ impl Server {
         let mut send_column_counter = Counter::new(COLUMN_SEND_COUNTER);
         let mut column_counter = Counter::new(NUM_COLUMNS);
 
-        let mut last_updated = Instant::now();
-        #[allow(unused_assignments)]
-        let mut delta = Duration::ZERO;
+        let delta = Duration::from_secs_f32(1.0 / TICK_RATE);
+        let mut interval = tokio::time::interval(delta);
+        // interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
 
         loop {
-            let timer = tokio::spawn(async {
-                tokio::time::sleep(Duration::from_secs_f64(1.0/TICK_RATE)).await;
-            });
-            let now = Instant::now();
-            delta = now - last_updated;
-            last_updated = now;
+            interval.tick().await;
 
             let mut messages = Vec::new();
 
+            // TODO put in separate thread
             if send_column_counter.step(1) == 0 {
                 messages.push(self.get_column_msg(column_counter.step(1)).await);
             }
 
             // TODO remove expect
             self.handle_network(delta, messages).await.expect("network error");
-            self.iterate_msg_buffer().await;
-            systems::update_movement(&mut self.world, delta).await;
-
-            // tokio::time::sleep(Duration::from_secs_f64(1.0/TICK_RATE).saturating_sub(delta)).await;
-            let _ = timer.await;
+            let mut world = self.world.lock().await;
+            systems::update_movement(&mut world, delta).await;
         }
     }
 
     async fn get_column_msg(&self, index: CounterType) -> ServerMessage {
         debug_assert_eq!(NUM_COLUMNS, 3);
+        let world = self.world.lock().await;
         let columns = match index {
-            0 => columns!(self.world, [Player]),
-            1 => columns!(self.world, [Transform]),
-            2 => columns!(self.world, [MovementState]),
+            0 => columns!(world, [Player]),
+            1 => columns!(world, [Transform]),
+            2 => columns!(world, [MovementState]),
             _ => unreachable!()
         };
         ServerMessage::World(columns)
-    }
-
-    async fn iterate_msg_buffer(&mut self) {
-        let now = utils::epoch_time();
-        for (i, (entity, msg)) in self.message_buffer.iter().enumerate() {
-            match msg {
-                ClientMessage::Movement { movement, timestamp } => {
-                    let dt = now - timestamp;
-                    if dt >= LATENCY {
-                        println!("{dt}");
-                        if let Ok(mut entity_movement) = self.world.get::<&mut MovementState>(*entity) {
-                            *entity_movement = movement.clone();
-                        }
-                        self.message_buffer.swap_remove(i);
-                        break
-                    }
-                }
-            }
-        }
     }
 
     async fn handle_msg(&mut self, client_id: ClientId, msg: ClientMessage) {
@@ -122,14 +97,24 @@ impl Server {
                     serialize(vec![packet]).unwrap(),
                 );
 
-                self.message_buffer.push((*entity, msg));
+                let world = self.world.clone();
+                let movement = movement.clone();
+                let entity = entity.clone();
+                tokio::task::spawn(async move {
+                    let world = world.lock().await;
+                    sleep_until!(tokio, timestamp + LATENCY);
+                    if let Ok(mut entity_movement) = world.get::<&mut MovementState>(entity) {
+                        *entity_movement = movement;
+                    }
+                });
             }
         }
     }
 
     async fn handle_connect(&mut self, client_id: ClientId) {
         let pos = vec2(0.0, 0.0);
-        let entity_id = self.world.spawn(PlayerBundle {
+        let mut world = self.world.lock().await;
+        let entity_id = world.spawn(PlayerBundle {
             player: Player,
             transform: Transform::new(pos),
             movement_state: MovementState {
@@ -146,7 +131,7 @@ impl Server {
                     entity: entity_id,
                 },
                 ServerMessage::World(
-                    columns!(self.world, [
+                    columns!(world, [
                         Player,
                         Transform,
                         MovementState
@@ -170,7 +155,8 @@ impl Server {
                     println!("client {client_id}: disconnected, reason: '{reason}'");
                     // TODO remove unwraps
                     let entity = self.clients.remove(&client_id).unwrap();
-                    self.world.despawn(entity).unwrap();
+                    let mut world = self.world.lock().await;
+                    world.despawn(entity).unwrap();
                 }
             }
         }
