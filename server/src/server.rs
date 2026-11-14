@@ -1,6 +1,7 @@
 use common::{
     Result,
     LATENCY,
+    TICK_RATE,
     network::*,
     components::*,
     utils::{ Counter, CounterType },
@@ -17,7 +18,7 @@ use renet::{ ClientId, RenetServer, DefaultChannel, ServerEvent };
 use renet_netcode::NetcodeServerTransport;
 use glam::vec2;
 
-const TICK_RATE: f32 = 60.0;
+// TODO replace with tokio timer
 const COLUMN_SEND_COUNTER: u64 = 20;
 
 pub struct Server {
@@ -45,12 +46,17 @@ impl Server {
         let mut send_column_counter = Counter::new(COLUMN_SEND_COUNTER);
         let mut column_counter = Counter::new(NUM_COLUMNS);
 
-        let delta = Duration::from_secs_f32(1.0 / TICK_RATE);
-        let mut interval = tokio::time::interval(delta);
-        // interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
+        let delta_fix = Duration::from_secs_f32(1.0 / TICK_RATE);
+        let mut interval = tokio::time::interval(delta_fix);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut dt_accumulator = Duration::ZERO;
+        let mut last_tick = tokio::time::Instant::now();
 
         loop {
-            interval.tick().await;
+            let now = interval.tick().await;
+            let dt = now.duration_since(last_tick);
+            dt_accumulator += dt;
+            last_tick = now;
 
             let mut messages = Vec::new();
 
@@ -59,10 +65,14 @@ impl Server {
                 messages.push(self.get_column_msg(column_counter.step(1)).await);
             }
 
-            // TODO remove expect
-            self.handle_network(delta, messages).await.expect("network error");
-            let mut world = self.world.lock().await;
-            systems::update_movement(&mut world, delta).await;
+            self.handle_network(delta_fix, messages).await.expect("network error");
+
+            while delta_fix < dt_accumulator {
+                // TODO remove expect
+                let mut world = self.world.lock().await;
+                systems::update_movement(&mut world, delta_fix).await;
+                dt_accumulator -= delta_fix;
+            }
         }
     }
 
@@ -101,8 +111,8 @@ impl Server {
                 let movement = movement.clone();
                 let entity = entity.clone();
                 tokio::task::spawn(async move {
-                    let world = world.lock().await;
                     sleep_until!(tokio, timestamp + LATENCY);
+                    let world = world.lock().await;
                     if let Ok(mut entity_movement) = world.get::<&mut MovementState>(entity) {
                         *entity_movement = movement;
                     }
@@ -113,14 +123,17 @@ impl Server {
 
     async fn handle_connect(&mut self, client_id: ClientId) {
         let pos = vec2(0.0, 0.0);
-        let mut world = self.world.lock().await;
-        let entity_id = world.spawn(PlayerBundle {
-            player: Player,
-            transform: Transform::new(pos),
-            movement_state: MovementState {
-                dir: Direction::None,
-            },
-        });
+
+        let entity_id = {
+            let mut world = self.world.lock().await;
+            world.spawn(PlayerBundle {
+                player: Player,
+                transform: Transform::new(pos),
+                movement_state: MovementState {
+                    dir: Direction::None,
+                },
+            })
+        };
 
         self.clients.insert(client_id, entity_id);
         self.server.send_message(
@@ -131,7 +144,7 @@ impl Server {
                     entity: entity_id,
                 },
                 ServerMessage::World(
-                    columns!(world, [
+                    columns!(self.world.lock().await, [
                         Player,
                         Transform,
                         MovementState

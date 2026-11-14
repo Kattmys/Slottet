@@ -3,7 +3,12 @@ mod keybinds;
 
 use crate::texture::TextureManager;
 use crate::keybinds::{ Event, KeyMap, load_keymap };
-use common::{ Result, LATENCY, sleep_until };
+use common::{
+    Result,
+    LATENCY,
+    TICK_RATE,
+    sleep_until,
+};
 use common::network::{
     ClientMessage,
     ServerMessage,
@@ -65,6 +70,7 @@ impl Client {
 
     async fn run(&mut self) {
         let mut dt_accumulator = 0.0;
+        let delta_fix = 1.0 / TICK_RATE;
 
         loop {
             let delta = get_frame_time();
@@ -72,10 +78,10 @@ impl Client {
 
             self.update(Duration::from_secs_f32(delta)).await;
 
-            while dt_accumulator >= 1.0 / 60.0 {
+            while delta_fix < dt_accumulator {
                 let mut world = self.world.lock().unwrap();
                 systems::update_movement(&mut world, Duration::from_secs_f32(delta)).await;
-                dt_accumulator -= 1.0 / 60.0;
+                dt_accumulator -= delta_fix;
             }
 
             self.render().await;
@@ -139,8 +145,6 @@ impl Client {
     }
 
     async fn handle_msg(&mut self, msg: ServerMessage) {
-        let mut world = self.world.lock().unwrap();
-
         match msg {
             ServerMessage::InitialData { entity } => {
                 self.player = entity;
@@ -148,27 +152,32 @@ impl Client {
 
             ServerMessage::World(columns) => {
                 for id in columns.ids {
+                    let mut world = self.world.lock().unwrap();
                     if !world.contains(id) {
                         world.spawn_at(id, ());
                     }
                 }
 
-                update_components!(world, columns, [
+                update_components!(self.world.lock().unwrap(), columns, [
                     Player,
                     MovementState
                 ]);
 
                 for (id, transform) in columns.Transform {
-                    let do_move = id != self.player || match world.get::<&Transform>(self.player) {
-                        Err(_) => true,
-                        Ok(_entity_transform) => {
-                            // TODO check diff
-                            // println!("diff: {}", transform.pos.distance(entity_transform.pos));
-                            false
+                    let do_move_self = {
+                        let world = self.world.lock().unwrap();
+                        match world.get::<&Transform>(self.player) {
+                            Err(_) => true,
+                            Ok(_entity_transform) => {
+                                // TODO check diff
+                                // println!("diff: {}", transform.pos.distance(entity_transform.pos));
+                                false
+                            }
                         }
                     };
 
-                    if do_move {
+                    if id != self.player || do_move_self {
+                        let mut world = self.world.lock().unwrap();
                         world.insert(id, (transform,)).unwrap();
                     }
                 }
@@ -217,8 +226,6 @@ impl Client {
     }
 
     async fn render(&self) {
-        let world = self.world.lock().unwrap();
-
         clear_background(LIGHTGRAY);
 
         if !self.client.is_connected() {
@@ -228,27 +235,33 @@ impl Client {
             draw_text(text, (screen_width() - text.len() as f32 * FONT_WIDTH) / 2., (screen_height() + FONT_HEIGHT) / 2., 40.0, BLACK);
         }
 
-        let viewport_offset = match world.get::<&Transform>(self.player) {
-            Ok(player_transform) => {
-                player_transform.pos
-                - vec2(screen_width(), screen_height())
-                / 2.0
+        let viewport_offset = {
+            let world = self.world.lock().unwrap();
+            match world.get::<&Transform>(self.player) {
+                Ok(player_transform) => {
+                    player_transform.pos
+                    - vec2(screen_width(), screen_height())
+                    / 2.0
+                }
+                Err(_) => Vec2::ZERO,
             }
-            Err(_) => Vec2::ZERO,
         };
 
-        for (entity, transform) in
-            world.query::<(hecs::Entity, &Transform)>().iter()
         {
-            let color = if entity == self.player { GREEN } else { RED };
+            let world = self.world.lock().unwrap();
+            for (entity, transform) in
+                world.query::<(hecs::Entity, &Transform)>().iter()
+            {
+                let color = if entity == self.player { GREEN } else { RED };
 
-            draw_rectangle(
-                transform.pos.x - viewport_offset.x,
-                transform.pos.y - viewport_offset.y,
-                30.0,
-                30.0,
-                color,
-            );
+                draw_rectangle(
+                    transform.pos.x - viewport_offset.x,
+                    transform.pos.y - viewport_offset.y,
+                    30.0,
+                    30.0,
+                    color,
+                );
+            }
         }
     }
 }
