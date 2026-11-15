@@ -294,16 +294,46 @@ impl Client {
 
         {
             let world = self.world.lock().unwrap();
-            for (entity, transform) in
-                world.query::<(hecs::Entity, &Transform)>().iter()
+            for (entity, transform, movement) in
+                world.query::<(hecs::Entity, &Transform, &MovementState)>().iter()
             {
                 let color = if entity == self.player { GREEN } else { RED };
 
+                let player_x = transform.pos.x - viewport_offset.x;
+                let player_y = transform.pos.y - viewport_offset.y;
+
+                const ENTITY_SIZE: f32 = 30.0;
+
+                let dir = Vec2::from(&movement.dir).normalize() * ENTITY_SIZE;
+
+                const ARROW_SIZE: f32 = 0.4;
+                const ARROW_COLOR: Color = GRAY;
+                let arrow_point = vec2(
+                    player_x + ENTITY_SIZE / 2. + dir.x, 
+                    player_y + ENTITY_SIZE / 2. + dir.y,
+                );
+
+                draw_line(
+                    player_x + ENTITY_SIZE / 2.,
+                    player_y + ENTITY_SIZE / 2.,
+                    arrow_point.x,
+                    arrow_point.y,
+                    3.5,
+                    ARROW_COLOR,
+                );
+
+                draw_triangle(
+                    arrow_point + dir / 2.,
+                    arrow_point - dir.perp() * ARROW_SIZE / 2.,
+                    arrow_point + dir.perp() * ARROW_SIZE / 2.,
+                    ARROW_COLOR,
+                );
+
                 draw_rectangle(
-                    transform.pos.x - viewport_offset.x,
-                    transform.pos.y - viewport_offset.y,
-                    30.0,
-                    30.0,
+                    player_x,
+                    player_y,
+                    ENTITY_SIZE,
+                    ENTITY_SIZE,
                     color,
                 );
             }
