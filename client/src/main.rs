@@ -24,6 +24,7 @@ use macroquad::prelude::*;
 use std::env;
 use std::time::{ Duration, Instant };
 use std::sync::{ Arc, Mutex };
+use std::collections::HashMap;
 use renet::{ RenetClient, DefaultChannel };
 use renet_netcode::NetcodeClientTransport;
 
@@ -34,6 +35,7 @@ struct Client {
     player: hecs::Entity,
     keymap: KeyMap,
     textures: TextureManager,
+    position_offsets: HashMap<hecs::Entity, Vec2>,
 }
 
 macro_rules! update_components {
@@ -51,9 +53,9 @@ impl Client {
         let (client, transport) = create_client(addr)?;
         let world = Arc::new(Mutex::new(hecs::World::new()));
         let player = hecs::Entity::DANGLING;
-
         let textures = TextureManager::init("assets").await?;
         let keymap = load_keymap();
+        let position_offsets = HashMap::new();
 
         Ok(Self {
             client,
@@ -62,6 +64,7 @@ impl Client {
 			player,
 			textures,
 			keymap,
+            position_offsets,
         })
     }
 
@@ -79,6 +82,8 @@ impl Client {
             let messages = self.handle_input().await;
             self.handle_network(delta, messages).await.expect("network error");
 
+            self.handle_position_offsets(delta).await;
+
             self.render().await;
 
             next_frame().await;
@@ -91,6 +96,7 @@ impl Client {
     fn update_movement_loop(world: Arc<Mutex<hecs::World>>) {
         let delta_fix = Duration::from_millis(1000 / TICK_RATE);
         let mut last_tick = Instant::now();
+
         loop {
             let now = Instant::now();
             let delta = now.duration_since(last_tick);
@@ -100,6 +106,29 @@ impl Client {
                 systems::update_movement(&mut world, delta);
             }
             std::thread::sleep(delta_fix - Instant::now().duration_since(last_tick));
+        }
+    }
+
+    async fn handle_position_offsets(&mut self, delta: Duration) {
+        const MAX_POSITION_ERROR: f32 = 10.0;
+        const ALLOWED_POSITION_ERROR: f32 = 0.4;
+
+        for (id, offset) in &mut self.position_offsets {
+            let error = offset.length();
+            if MAX_POSITION_ERROR < error {
+                let world = self.world.lock().unwrap();
+                if let Ok(mut transform) = world.get::<&mut Transform>(*id) {
+                    transform.pos += *offset;
+                    *offset = Vec2::ZERO;
+                }
+            } else if ALLOWED_POSITION_ERROR < error {
+                let world = self.world.lock().unwrap();
+                if let Ok(mut transform) = world.get::<&mut Transform>(*id) {
+                    let change = offset.normalize() * 100.0 * delta.as_secs_f32();
+                    transform.pos += change;
+                    *offset -= change;
+                }
+            }
         }
     }
 
@@ -137,19 +166,33 @@ impl Client {
             }
         }
 
-        let world = self.world.lock().unwrap();
+        let movement = MovementState { dir };
 
-        if let Ok(mut move_state) = world.get::<&mut MovementState>(self.player) {
-            if !(move_state.dir == dir) {
-                move_state.dir = dir.clone();
-                messages.push(ClientMessage::Movement {
-                    movement: MovementState { dir },
-                    timestamp: utils::epoch_time_millis(),
-                });
-            }
-        }
+        messages.push(ClientMessage::Movement {
+            movement: movement.clone(),
+            timestamp: utils::epoch_time_millis(),
+        });
+
+        self.handle_movement_update(
+            self.player,
+            movement,
+            utils::epoch_time_millis()
+        ).await;
 
         messages
+    }
+
+    async fn handle_movement_update
+        (&mut self, entity: hecs::Entity, movement: MovementState, timestamp: u128)
+    {
+        let world = self.world.clone();
+        std::thread::spawn(move || {
+            sleep_until!(thread, timestamp + LATENCY);
+            let world = world.lock().unwrap();
+            if let Ok(mut entity_movement) = world.get::<&mut MovementState>(entity) {
+                *entity_movement = movement;
+            }
+        });
     }
 
     async fn handle_msg(&mut self, msg: ServerMessage) {
@@ -171,35 +214,20 @@ impl Client {
                     MovementState
                 ]);
 
-                for (id, transform) in columns.Transform {
-                    let do_move_self = {
-                        let world = self.world.lock().unwrap();
-                        match world.get::<&Transform>(self.player) {
-                            Err(_) => true,
-                            Ok(_entity_transform) => {
-                                // TODO check diff
-                                // println!("diff: {}", transform.pos.distance(entity_transform.pos));
-                                false
-                            }
-                        }
-                    };
-
-                    if id != self.player || do_move_self {
-                        let mut world = self.world.lock().unwrap();
-                        world.insert(id, (transform,)).unwrap();
+                for (id, real_transform) in columns.Transform {
+                    let mut world = self.world.lock().unwrap();
+                    if let Ok(transform) = world.get::<&Transform>(id) {
+                        let pos = transform.pos;
+                        let real_pos = real_transform.pos;
+                        self.position_offsets.insert(id, real_pos - pos);
+                    } else {
+                        world.insert(id, (real_transform,)).unwrap();
                     }
                 }
             }
 
             ServerMessage::Movement { entity, movement, timestamp } => {
-                let world = self.world.clone();
-                std::thread::spawn(move || {
-                    sleep_until!(thread, timestamp + LATENCY);
-                    let world = world.lock().unwrap();
-                    if let Ok(mut entity_movement) = world.get::<&mut MovementState>(entity) {
-                        *entity_movement = movement;
-                    }
-                });
+                self.handle_movement_update(entity, movement, timestamp).await;
             }
         }
     }
