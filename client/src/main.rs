@@ -197,7 +197,6 @@ impl Client {
                     sleep_until!(thread, timestamp + LATENCY);
                     let world = world.lock().unwrap();
                     if let Ok(mut entity_movement) = world.get::<&mut MovementState>(entity) {
-                        println!("executing at: {}", utils::epoch_time_millis());
                         *entity_movement = movement;
                     }
                 });

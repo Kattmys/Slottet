@@ -127,7 +127,6 @@ impl Server {
                     sleep_until!(tokio, timestamp + LATENCY);
                     let world = world.lock().await;
                     if let Ok(mut entity_movement) = world.get::<&mut MovementState>(entity) {
-                        println!("executing at: {}", utils::epoch_time_millis());
                         *entity_movement = movement;
                     }
                 });
