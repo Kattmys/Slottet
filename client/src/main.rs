@@ -98,9 +98,6 @@ impl Client {
             self.render().await;
 
             next_frame().await;
-
-            let now = utils::epoch_time_millis();
-            sleep_until!(thread, now - (now % 16) + 16);
         }
     }
 
@@ -121,24 +118,13 @@ impl Client {
     }
 
     async fn handle_position_offsets(&mut self, delta: Duration) {
-        const MAX_POSITION_ERROR: f32 = 20.0;
-        const ALLOWED_POSITION_ERROR: f32 = 0.4;
-
+        self.position_offsets.retain(|_id, offset| offset.length() > 0.1);
         for (id, offset) in &mut self.position_offsets {
-            let error = offset.length();
-            if MAX_POSITION_ERROR < error {
-                let world = self.world.lock().unwrap();
-                if let Ok(mut transform) = world.get::<&mut Transform>(*id) {
-                    transform.pos += *offset;
-                    *offset = Vec2::ZERO;
-                }
-            } else if ALLOWED_POSITION_ERROR < error {
-                let world = self.world.lock().unwrap();
-                if let Ok(mut transform) = world.get::<&mut Transform>(*id) {
-                    let change = offset.normalize() * 100.0 * delta.as_secs_f32();
-                    transform.pos += change;
-                    *offset -= change;
-                }
+            let world = self.world.lock().unwrap();
+            if let Ok(mut transform) = world.get::<&mut Transform>(*id) {
+                let change = offset.normalize() * 100.0 * delta.as_secs_f32();
+                transform.pos += change;
+                *offset -= change;
             }
         }
     }
