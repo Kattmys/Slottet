@@ -106,7 +106,13 @@ impl Server {
             eprintln!("tried to handle message from invalid client {client_id}");
             return
         };
+
         match msg {
+            ClientMessage::Disconnect => {
+                self.handle_disconnect(client_id, "player left".to_string()).await;
+                self.server.disconnect(client_id);
+            }
+
             ClientMessage::Movement { ref movement, timestamp } => {
                 let packet = ServerMessage::Movement {
                     entity: *entity,
@@ -167,6 +173,20 @@ impl Server {
         );
     }
 
+    async fn handle_disconnect(&mut self, client_id: ClientId, reason: String) {
+        if let Some(entity) = self.clients.remove(&client_id) {
+            println!("client {client_id}: disconnected, reason: {reason}");
+            let mut world = self.world.lock().await;
+            world.despawn(entity).unwrap();
+            self.server.broadcast_message(
+                DefaultChannel::ReliableUnordered,
+                serialize(vec![
+                    ServerMessage::ClientDisconnect { entity }
+                ]).unwrap()
+            );
+        }
+    }
+
     async fn handle_network(&mut self, delta: Duration, messages: Vec<ServerMessage>) -> Result<()> {
         self.server.update(delta);
         self.transport.update(delta, &mut self.server)?;
@@ -178,11 +198,7 @@ impl Server {
                     self.handle_connect(client_id).await;
                 }
                 ServerEvent::ClientDisconnected { client_id, reason } => {
-                    println!("client {client_id}: disconnected, reason: '{reason}'");
-                    // TODO remove unwraps
-                    let entity = self.clients.remove(&client_id).unwrap();
-                    let mut world = self.world.lock().await;
-                    world.despawn(entity).unwrap();
+                    self.handle_disconnect(client_id, format!("{reason}")).await;
                 }
             }
         }

@@ -69,6 +69,8 @@ impl Client {
     }
 
     async fn run(&mut self) {
+        prevent_quit();
+
         {
             let world = self.world.clone();
             std::thread::spawn(move || {
@@ -79,8 +81,17 @@ impl Client {
         loop {
             let delta = Duration::from_secs_f32(get_frame_time());
 
-            let messages = self.handle_input().await;
+            let mut messages = self.handle_input().await;
+
+            if is_quit_requested() {
+                self.handle_exit(&mut messages);
+            }
+
             self.handle_network(delta, messages).await.expect("network error");
+
+            if is_quit_requested() {
+                break
+            }
 
             self.handle_position_offsets(delta).await;
 
@@ -133,12 +144,12 @@ impl Client {
     }
 
     async fn handle_input(&mut self) -> Vec<ClientMessage> {
+        let mut messages = Vec::new();
+
         let events: Vec<_> = get_keys_down()
             .iter()
             .filter_map(|key| self.keymap.get(key))
             .collect();
-
-        let mut messages = Vec::new();
 
         let dir = {
             let up    = events.contains(&&Event::GoUp);
@@ -201,6 +212,12 @@ impl Client {
                 self.player = entity;
             }
 
+            ServerMessage::ClientDisconnect { entity } => {
+                println!("disconnected: {entity:?}");
+                let mut world = self.world.lock().unwrap();
+                let _ = world.despawn(entity);
+            }
+
             ServerMessage::World(columns) => {
                 for id in columns.ids {
                     let mut world = self.world.lock().unwrap();
@@ -261,6 +278,10 @@ impl Client {
         self.transport.send_packets(&mut self.client)?;
 
         Ok(())
+    }
+
+    fn handle_exit(&self, messages: &mut Vec<ClientMessage>) {
+        messages.push(ClientMessage::Disconnect);
     }
 
     async fn render(&self) {

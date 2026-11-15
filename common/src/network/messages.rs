@@ -3,7 +3,6 @@ use crate::components::MovementState;
 
 use serde::{ Serialize, Deserialize };
 
-// from server
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ServerMessage {
     World(Columns),
@@ -15,6 +14,9 @@ pub enum ServerMessage {
         movement: MovementState,
         timestamp: u128,
     },
+    ClientDisconnect {
+        entity: hecs::Entity,
+    },
 }
 
 // from client
@@ -24,6 +26,7 @@ pub enum ClientMessage {
         movement: MovementState,
         timestamp: u128,
     },
+    Disconnect,
 }
 
 type Column<T> = Vec<(hecs::Entity, T)>;
