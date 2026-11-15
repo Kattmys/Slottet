@@ -92,7 +92,7 @@ impl Client {
 
     async fn update(&mut self, delta: Duration) {
         let messages = self.handle_input().await;
-        self.handle_network(delta, messages).await;
+        self.handle_network(delta, messages).await.expect("network error");
     }
 
     async fn handle_input(&mut self) -> Vec<ClientMessage> {
@@ -196,15 +196,15 @@ impl Client {
         }
     }
 
-    async fn handle_network(&mut self, delta: Duration, messages: Vec<ClientMessage>) {
+    async fn handle_network(&mut self, delta: Duration, messages: Vec<ClientMessage>) -> Result<()> {
         self.client.update(delta);
-        self.transport.update(delta, &mut self.client).unwrap();
+        self.transport.update(delta, &mut self.client)?;
 
         if self.client.is_connected() {
             if !messages.is_empty() {
                 self.client.send_message(
                     DefaultChannel::ReliableOrdered,
-                    serialize(messages).unwrap()
+                    serialize(messages)?,
                 );
             }
 
@@ -222,7 +222,9 @@ impl Client {
             }
         }
 
-        self.transport.send_packets(&mut self.client).unwrap();
+        self.transport.send_packets(&mut self.client)?;
+
+        Ok(())
     }
 
     async fn render(&self) {
