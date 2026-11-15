@@ -110,7 +110,7 @@ impl Client {
     }
 
     async fn handle_position_offsets(&mut self, delta: Duration) {
-        const MAX_POSITION_ERROR: f32 = 10.0;
+        const MAX_POSITION_ERROR: f32 = 20.0;
         const ALLOWED_POSITION_ERROR: f32 = 0.4;
 
         for (id, offset) in &mut self.position_offsets {

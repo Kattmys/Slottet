@@ -19,7 +19,7 @@ use renet_netcode::NetcodeServerTransport;
 use glam::vec2;
 
 // TODO replace with tokio timer
-const COLUMN_SEND_COUNTER: u64 = 20;
+const COLUMN_SEND_COUNTER: u64 = 1;
 
 pub struct Server {
     server: RenetServer,
