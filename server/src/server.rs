@@ -13,7 +13,7 @@ use common::{
 use std::time::Duration;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use renet::{ ClientId, RenetServer, DefaultChannel, ServerEvent };
 use renet_netcode::NetcodeServerTransport;
 use glam::vec2;
@@ -24,14 +24,14 @@ const COLUMN_SEND_COUNTER: u64 = 1;
 pub struct Server {
     server: RenetServer,
     transport: NetcodeServerTransport,
-    world: Arc<Mutex<hecs::World>>,
+    world: Arc<RwLock<hecs::World>>,
     clients: HashMap<ClientId, hecs::Entity>,
 }
 
 impl Server {
     pub fn connect(addr: String) -> Result<Self> {
         let (server, transport) = create_server(addr)?;
-        let world = Arc::new(Mutex::new(hecs::World::new()));
+        let world = Arc::new(RwLock::new(hecs::World::new()));
         let clients = HashMap::new();
 
         Ok(Self {
@@ -51,7 +51,7 @@ impl Server {
         let mut last_tick = tokio::time::Instant::now();
 
         {
-            let world = self.world.clone();
+            let world = Arc::clone(&self.world);
             tokio::task::spawn(async move {
                 Self::update_movement_loop(world).await;
             });
@@ -72,7 +72,7 @@ impl Server {
         }
     }
 
-    async fn update_movement_loop(world: Arc<Mutex<hecs::World>>) {
+    async fn update_movement_loop(world: Arc<RwLock<hecs::World>>) {
         let mut interval = tokio::time::interval(Duration::from_millis(1000 / TICK_RATE));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut last_tick = tokio::time::Instant::now();
@@ -83,7 +83,7 @@ impl Server {
             last_tick = now;
 
             {
-                let mut world = world.lock().await;
+                let mut world = world.write().await;
                 systems::update_movement(&mut world, delta);
             }
         }
@@ -91,7 +91,7 @@ impl Server {
 
     async fn get_column_msg(&self, index: CounterType) -> ServerMessage {
         debug_assert_eq!(NUM_COLUMNS, 3);
-        let world = self.world.lock().await;
+        let world = self.world.read().await;
         let columns = match index {
             0 => columns!(world, [Player]),
             1 => columns!(world, [Transform]),
@@ -131,7 +131,7 @@ impl Server {
                 let entity = entity.clone();
                 tokio::task::spawn(async move {
                     sleep_until!(tokio, timestamp + LATENCY);
-                    let world = world.lock().await;
+                    let world = world.write().await;
                     if let Ok(mut entity_movement) = world.get::<&mut MovementState>(entity) {
                         *entity_movement = movement;
                     }
@@ -141,13 +141,11 @@ impl Server {
     }
 
     async fn handle_connect(&mut self, client_id: ClientId) {
-        let pos = vec2(0.0, 0.0);
-
         let entity_id = {
-            let mut world = self.world.lock().await;
+            let mut world = self.world.write().await;
             world.spawn(PlayerBundle {
                 player: Player,
-                transform: Transform::new(pos),
+                transform: Transform::new(vec2(0.0, 0.0)),
                 movement_state: MovementState {
                     dir: Direction::None,
                 },
@@ -163,7 +161,7 @@ impl Server {
                     entity: entity_id,
                 },
                 ServerMessage::World(
-                    columns!(self.world.lock().await, [
+                    columns!(self.world.read().await, [
                         Player,
                         Transform,
                         MovementState
@@ -176,7 +174,7 @@ impl Server {
     async fn handle_disconnect(&mut self, client_id: ClientId, reason: String) {
         if let Some(entity) = self.clients.remove(&client_id) {
             println!("client {client_id}: disconnected, reason: {reason}");
-            let mut world = self.world.lock().await;
+            let mut world = self.world.write().await;
             world.despawn(entity).unwrap();
             self.server.broadcast_message(
                 DefaultChannel::ReliableUnordered,
