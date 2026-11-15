@@ -46,7 +46,9 @@ impl Server {
         let mut send_column_counter = Counter::new(COLUMN_SEND_COUNTER);
         let mut column_counter = Counter::new(NUM_COLUMNS);
 
-        let mut interval = tokio::time::interval(Duration::from_millis(1000 / TICK_RATE));
+        let mut interval = tokio::time::interval(
+            Duration::from_millis(1000 / TICK_RATE)
+        );
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut last_tick = tokio::time::Instant::now();
 
@@ -73,7 +75,9 @@ impl Server {
     }
 
     async fn update_movement_loop(world: Arc<RwLock<hecs::World>>) {
-        let mut interval = tokio::time::interval(Duration::from_millis(1000 / TICK_RATE));
+        let mut interval = tokio::time::interval(
+            Duration::from_millis(1000 / TICK_RATE)
+        );
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut last_tick = tokio::time::Instant::now();
 
@@ -132,7 +136,9 @@ impl Server {
                 tokio::task::spawn(async move {
                     sleep_until!(tokio, timestamp + LATENCY);
                     let world = world.write().await;
-                    if let Ok(mut entity_movement) = world.get::<&mut MovementState>(entity) {
+                    if let Ok(mut entity_movement) =
+                        world.get::<&mut MovementState>(entity)
+                    {
                         *entity_movement = movement;
                     }
                 });
@@ -185,7 +191,9 @@ impl Server {
         }
     }
 
-    async fn handle_network(&mut self, delta: Duration, messages: Vec<ServerMessage>) -> Result<()> {
+    async fn handle_network
+        (&mut self, delta: Duration, messages: Vec<ServerMessage>) -> Result<()>
+    {
         self.server.update(delta);
         self.transport.update(delta, &mut self.server)?;
 

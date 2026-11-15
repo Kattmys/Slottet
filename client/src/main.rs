@@ -235,7 +235,9 @@ impl Client {
         }
     }
 
-    async fn handle_network(&mut self, delta: Duration, messages: Vec<ClientMessage>) -> Result<()> {
+    async fn handle_network
+        (&mut self, delta: Duration, messages: Vec<ClientMessage>) -> Result<()>
+    {
         self.client.update(delta);
         self.transport.update(delta, &mut self.client)?;
 
@@ -277,7 +279,13 @@ impl Client {
             let text = "Connecting...";
             const FONT_WIDTH: f32 = 17.5;
             const FONT_HEIGHT: f32 = 20.0;
-            draw_text(text, (screen_width() - text.len() as f32 * FONT_WIDTH) / 2., (screen_height() + FONT_HEIGHT) / 2., 40.0, BLACK);
+            draw_text(
+                text,
+                (screen_width() - text.len() as f32 * FONT_WIDTH) / 2.,
+                (screen_height() + FONT_HEIGHT) / 2.,
+                40.0,
+                BLACK,
+            );
         }
 
         let viewport_offset = {
