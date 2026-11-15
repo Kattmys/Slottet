@@ -19,7 +19,6 @@ pub enum ServerMessage {
     },
 }
 
-// from client
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientMessage {
     Movement {
