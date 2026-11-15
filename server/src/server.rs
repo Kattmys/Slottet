@@ -4,7 +4,7 @@ use common::{
     TICK_RATE,
     network::*,
     components::*,
-    utils::{ self, Counter, CounterType },
+    utils::{ Counter, CounterType },
     systems,
     columns,
     sleep_until,
