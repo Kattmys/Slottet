@@ -1,5 +1,5 @@
 use serde::{ Serialize, Deserialize };
-const TILE_SIZE: usize = 60;
+pub const TILE_SIZE: f32 = 60.;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum BackTile {
@@ -10,6 +10,7 @@ pub enum BackTile {
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum FrontTile {
     Tree,
+    Wall,
     None,
 }
 

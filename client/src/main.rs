@@ -1,8 +1,11 @@
 mod texture;
 mod keybinds;
+mod terrain;
 
 use crate::texture::TextureManager;
 use crate::keybinds::{ Event, KeyMap, load_keymap };
+use crate::terrain::Terrain;
+use common::terrain::{ Tile, FrontTile, BackTile, TILE_SIZE };
 use common::{
     Result,
     LATENCY,
@@ -36,6 +39,7 @@ struct Client {
     keymap: KeyMap,
     textures: TextureManager,
     position_offsets: HashMap<hecs::Entity, Vec2>,
+    terrain: Terrain,
 }
 
 macro_rules! update_components {
@@ -56,6 +60,13 @@ impl Client {
         let textures = TextureManager::init("assets").await?;
         let keymap = load_keymap();
         let position_offsets = HashMap::new();
+        let terrain = {
+            let origin_pos = Vec2::ZERO;
+            let height = 0;
+            let width = 0;
+            let tiles = Vec::new();
+            Terrain { origin_pos, height, width, tiles }
+        };
 
         Ok(Self {
             client,
@@ -65,12 +76,12 @@ impl Client {
 			textures,
 			keymap,
             position_offsets,
+            terrain,
         })
     }
 
     async fn run(&mut self) {
         prevent_quit();
-
         {
             let world = self.world.clone();
             std::thread::spawn(move || {
@@ -81,24 +92,27 @@ impl Client {
         loop {
             let delta = Duration::from_secs_f32(get_frame_time());
 
-            let mut messages = self.handle_input().await;
-
-            if is_quit_requested() {
-                self.handle_exit(&mut messages);
-            }
-
-            self.handle_network(delta, messages).await.expect("network error");
+            self.update(delta).await;
 
             if is_quit_requested() {
                 break
             }
 
-            self.handle_position_offsets(delta).await;
-
             self.render().await;
 
             next_frame().await;
         }
+    }
+    
+    async fn update(&mut self, delta: Duration) {
+        let mut messages = self.handle_input().await;
+
+        if is_quit_requested() {
+            self.handle_exit(&mut messages);
+        }
+
+        self.handle_network(delta, messages).await.expect("network error");
+        self.handle_position_offsets(delta).await;
     }
 
     fn update_movement_loop(world: Arc<Mutex<hecs::World>>) {
@@ -129,6 +143,7 @@ impl Client {
         }
     }
 
+    #[must_use]
     async fn handle_input(&mut self) -> Vec<ClientMessage> {
         let mut messages = Vec::new();
 
@@ -228,6 +243,25 @@ impl Client {
                     }
                 }
             }
+            ServerMessage::TerrainData { origin_pos, world_width, world_height } => {
+                self.terrain.origin_pos = origin_pos;
+                self.terrain.width = world_width;
+                self.terrain.height = world_height;
+                self.terrain.tiles = vec![Tile::grass(); world_width * world_height];
+            }
+
+            ServerMessage::TerrainPart { index, tiles } => {
+                let end = index + tiles.len();
+                if end > self.terrain.tiles.len() {
+                    eprintln!(
+                        "Terrain part {index}..{end} is outside the terrain ({} tiles)",
+                        self.terrain.tiles.len()
+                    );
+                    return;
+                }
+                self.terrain.tiles[index..end].copy_from_slice(&tiles);
+            }
+
 
             ServerMessage::Movement { entity, movement, timestamp } => {
                 self.handle_movement_update(entity, movement, timestamp).await;
@@ -270,6 +304,67 @@ impl Client {
         messages.push(ClientMessage::Disconnect);
     }
 
+    async fn render_terrain(&self, viewport_offset: Vec2) {
+        const UNKNOWN_TEXTURE: &'static [u8] = &[
+            //  R,   G, B,   A,
+            0,   0, 0,   255, // BLACK
+            255, 0, 255, 255, // PURPLE
+            255, 0, 255, 255, // PURPLE
+            0,   0, 0,   255, // BLACK
+        ];
+
+        if self.terrain.width == 0 {
+            return;
+        }
+
+        let unknown = Texture2D::from_rgba8(2, 2, UNKNOWN_TEXTURE);
+        let tile_size = vec2(TILE_SIZE, TILE_SIZE);
+
+        for (idx, tile) in self.terrain.tiles.iter().enumerate() {
+            let x = idx % self.terrain.width;
+            let y = idx / self.terrain.width;
+            let pos = self.terrain.origin_pos
+            + vec2(x as f32, y as f32) * TILE_SIZE
+            - viewport_offset;
+
+            let back_path = match tile.back {
+                BackTile::Grass => "/grass.png",
+                BackTile::Stone => "/stone.png",
+            };
+            let back = self.textures.get(back_path).await.unwrap_or(&unknown);
+            draw_texture_ex(
+                back,
+                pos.x,
+                pos.y,
+                WHITE,
+                DrawTextureParams {
+                    dest_size: Some(tile_size),
+                    ..Default::default()
+                },
+            );
+
+            let front_path = match tile.front {
+                FrontTile::Tree => Some("/tree.png"),
+                FrontTile::Wall => Some("/wall.png"),
+                FrontTile::None => None,
+            };
+            if let Some(path) = front_path {
+                let front = self.textures.get(path).await.unwrap_or(&unknown);
+                draw_texture_ex(
+                    front,
+                    pos.x,
+                    pos.y,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(tile_size),
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+    }
+
+
     async fn render(&self) {
         clear_background(LIGHTGRAY);
 
@@ -291,6 +386,8 @@ impl Client {
                 Err(_) => Vec2::ZERO,
             }
         };
+
+        self.render_terrain(viewport_offset).await;
 
         {
             let world = self.world.lock().unwrap();

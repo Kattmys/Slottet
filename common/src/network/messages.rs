@@ -1,6 +1,8 @@
 use crate::components;
 use crate::components::MovementState;
+use crate::terrain::Tile;
 
+use macroquad::math::Vec2;
 use serde::{ Serialize, Deserialize };
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -16,6 +18,15 @@ pub enum ServerMessage {
     },
     ClientDisconnect {
         entity: hecs::Entity,
+    },
+    TerrainData {
+        origin_pos: Vec2,
+        world_width: usize,
+        world_height: usize,
+    },
+    TerrainPart {
+        index: usize,
+        tiles: Box<[Tile]>,
     },
 }
 
