@@ -22,7 +22,7 @@ use common::{ systems, utils };
 
 use macroquad::prelude::*;
 use std::env;
-use std::time::Duration;
+use std::time::{ Duration, Instant };
 use std::sync::{ Arc, Mutex };
 use renet::{ RenetClient, DefaultChannel };
 use renet_netcode::NetcodeClientTransport;
@@ -34,7 +34,6 @@ struct Client {
     player: hecs::Entity,
     keymap: KeyMap,
     textures: TextureManager,
-    // message_buffer: Vec<ServerMessage>,
 }
 
 macro_rules! update_components {
@@ -55,7 +54,6 @@ impl Client {
 
         let textures = TextureManager::init("assets").await?;
         let keymap = load_keymap();
-        // let message_buffer = Vec::new();
 
         Ok(Self {
             client,
@@ -64,35 +62,45 @@ impl Client {
 			player,
 			textures,
 			keymap,
-            // message_buffer,
         })
     }
 
     async fn run(&mut self) {
-        let mut dt_accumulator = 0.0;
-        let delta_fix = 1.0 / TICK_RATE;
+        {
+            let world = self.world.clone();
+            std::thread::spawn(move || {
+                Self::update_movement_loop(world);
+            });
+        }
 
         loop {
-            let delta = get_frame_time();
-            dt_accumulator += delta;
+            let delta = Duration::from_secs_f32(get_frame_time());
 
-            self.update(Duration::from_secs_f32(delta)).await;
-
-            while delta_fix < dt_accumulator {
-                let mut world = self.world.lock().unwrap();
-                systems::update_movement(&mut world, Duration::from_secs_f32(delta)).await;
-                dt_accumulator -= delta_fix;
-            }
+            let messages = self.handle_input().await;
+            self.handle_network(delta, messages).await.expect("network error");
 
             self.render().await;
 
-            next_frame().await
+            next_frame().await;
+
+            let now = utils::epoch_time_millis();
+            sleep_until!(thread, now - (now % 16) + 16);
         }
     }
 
-    async fn update(&mut self, delta: Duration) {
-        let messages = self.handle_input().await;
-        self.handle_network(delta, messages).await.expect("network error");
+    fn update_movement_loop(world: Arc<Mutex<hecs::World>>) {
+        let delta_fix = Duration::from_millis(1000 / TICK_RATE);
+        let mut last_tick = Instant::now();
+        loop {
+            let now = Instant::now();
+            let delta = now.duration_since(last_tick);
+            last_tick = now;
+            {
+                let mut world = world.lock().unwrap();
+                systems::update_movement(&mut world, delta);
+            }
+            std::thread::sleep(delta_fix - Instant::now().duration_since(last_tick));
+        }
     }
 
     async fn handle_input(&mut self) -> Vec<ClientMessage> {
@@ -189,6 +197,7 @@ impl Client {
                     sleep_until!(thread, timestamp + LATENCY);
                     let world = world.lock().unwrap();
                     if let Ok(mut entity_movement) = world.get::<&mut MovementState>(entity) {
+                        println!("executing at: {}", utils::epoch_time_millis());
                         *entity_movement = movement;
                     }
                 });

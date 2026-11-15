@@ -4,7 +4,7 @@ use common::{
     TICK_RATE,
     network::*,
     components::*,
-    utils::{ Counter, CounterType },
+    utils::{ self, Counter, CounterType },
     systems,
     columns,
     sleep_until,
@@ -46,32 +46,45 @@ impl Server {
         let mut send_column_counter = Counter::new(COLUMN_SEND_COUNTER);
         let mut column_counter = Counter::new(NUM_COLUMNS);
 
-        let delta_fix = Duration::from_secs_f32(1.0 / TICK_RATE);
-        let mut interval = tokio::time::interval(delta_fix);
+        let mut interval = tokio::time::interval(Duration::from_millis(1000 / TICK_RATE));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let mut dt_accumulator = Duration::ZERO;
         let mut last_tick = tokio::time::Instant::now();
+
+        {
+            let world = self.world.clone();
+            tokio::task::spawn(async move {
+                Self::update_movement_loop(world).await;
+            });
+        }
 
         loop {
             let now = interval.tick().await;
-            let dt = now.duration_since(last_tick);
-            dt_accumulator += dt;
+            let delta = now.duration_since(last_tick);
             last_tick = now;
 
             let mut messages = Vec::new();
 
-            // TODO put in separate thread
             if send_column_counter.step(1) == 0 {
                 messages.push(self.get_column_msg(column_counter.step(1)).await);
             }
 
-            self.handle_network(delta_fix, messages).await.expect("network error");
+            self.handle_network(delta, messages).await.expect("network error");
+        }
+    }
 
-            while delta_fix < dt_accumulator {
-                // TODO remove expect
-                let mut world = self.world.lock().await;
-                systems::update_movement(&mut world, delta_fix).await;
-                dt_accumulator -= delta_fix;
+    async fn update_movement_loop(world: Arc<Mutex<hecs::World>>) {
+        let mut interval = tokio::time::interval(Duration::from_millis(1000 / TICK_RATE));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut last_tick = tokio::time::Instant::now();
+
+        loop {
+            let now = interval.tick().await;
+            let delta = now.duration_since(last_tick);
+            last_tick = now;
+
+            {
+                let mut world = world.lock().await;
+                systems::update_movement(&mut world, delta);
             }
         }
     }
@@ -114,6 +127,7 @@ impl Server {
                     sleep_until!(tokio, timestamp + LATENCY);
                     let world = world.lock().await;
                     if let Ok(mut entity_movement) = world.get::<&mut MovementState>(entity) {
+                        println!("executing at: {}", utils::epoch_time_millis());
                         *entity_movement = movement;
                     }
                 });
