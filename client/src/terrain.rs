@@ -12,6 +12,8 @@ pub struct Terrain {
 }
 
 impl Terrain {
+    #[allow(unused)]
+    #[must_use]
     pub fn get(&self, x: usize, y: usize) -> Option<&Tile> {
         if x < self.width && y < self.height {
             self.tiles.get(y * self.width + x)

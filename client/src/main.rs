@@ -330,9 +330,10 @@ impl Client {
             - viewport_offset;
 
             let back_path = match tile.back {
-                BackTile::Grass => "/grass.png",
-                BackTile::Stone => "/stone.png",
+                BackTile::Grass => "grass.png",
+                BackTile::Stone => "stone_block.png",
             };
+
             let back = self.textures.get(back_path).await.unwrap_or(&unknown);
             draw_texture_ex(
                 back,
@@ -346,10 +347,12 @@ impl Client {
             );
 
             let front_path = match tile.front {
-                FrontTile::Tree => Some("/tree.png"),
-                FrontTile::Wall => Some("/wall.png"),
+                FrontTile::Tree => Some("tree.png"),
+                FrontTile::Wall => Some("wall.png"),
+                FrontTile::Stone => Some("stone.png"),
                 FrontTile::None => None,
             };
+
             if let Some(path) = front_path {
                 let front = self.textures.get(path).await.unwrap_or(&unknown);
                 draw_texture_ex(

@@ -11,6 +11,7 @@ pub enum BackTile {
 pub enum FrontTile {
     Tree,
     Wall,
+    Stone,
     None,
 }
 

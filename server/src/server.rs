@@ -1,5 +1,5 @@
 use common::utils::{ Counter, CounterType };
-use common::terrain::Tile;
+use common::terrain::{ Tile, TILE_SIZE };
 use common::{
     Result,
     LATENCY,
@@ -42,7 +42,11 @@ impl Server {
         let world = Arc::new(RwLock::new(hecs::World::new()));
         let clients = BiMap::new();
 
+        println!("generating map...");
         let terrain = generate_terrain();
+        println!("Done! map:");
+        crate::terrain::print_terrain(&terrain);
+
         let last_render_spot = HashMap::new();
 
         Ok(Self {
@@ -112,28 +116,24 @@ impl Server {
                 .and_then(|row| Some(row.len()))
                 .unwrap_or(0);
 
-            let north = (pos.y as usize).saturating_sub(RENDER_DISTANCE / 2);
-            let south = (pos.y as usize + RENDER_DISTANCE / 2).clamp(0, self.terrain.len());
-            let west = (pos.x as usize).saturating_sub(RENDER_DISTANCE / 2);
-            let east = (pos.x as usize + RENDER_DISTANCE / 2).clamp(0, row_len);
+            let tile_x = (pos.x / TILE_SIZE).max(0.0) as usize;
+            let tile_y = (pos.y / TILE_SIZE).max(0.0) as usize;
+
+            let north = tile_y.saturating_sub(RENDER_DISTANCE / 2);
+            let south = (tile_y + RENDER_DISTANCE / 2).min(self.terrain.len());
+            let west = tile_x.saturating_sub(RENDER_DISTANCE / 2);
+            let east = (tile_x + RENDER_DISTANCE / 2).min(row_len);
 
             for y in north..south {
-                let mut row_index = y * row_len;
-                let mut tiles: Vec<Tile> = vec![];
-                let Some(row) = self.terrain.get(row_index) else {
+                let Some(row) = self.terrain.get(y) else {
                     continue;
                 };
 
-                for x in west..east {
-                    match row.get(x) {
-                        Some(tile) => tiles.push(*tile),
-                        None       => row_index += 1,
-                    }
-                }
+                let tiles = row[west..east].to_vec().into_boxed_slice();
 
                 tile_messages.push(ServerMessage::TerrainPart {
-                    index: row_index,
-                    tiles: tiles.into_boxed_slice(),
+                    index: y * row_len + west,
+                    tiles,
                 });
             }
 
