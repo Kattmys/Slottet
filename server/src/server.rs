@@ -34,7 +34,7 @@ pub struct Server {
     last_render_spot: HashMap<hecs::Entity, Vec2>,
 }
 
-const RENDER_DISTANCE: usize = 20;
+const RENDER_DISTANCE: usize = 40;
 
 impl Server {
     pub fn connect(addr: String) -> Result<Self> {

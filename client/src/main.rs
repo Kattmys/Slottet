@@ -132,7 +132,11 @@ impl Client {
     }
 
     async fn handle_position_offsets(&mut self, delta: Duration) {
-        self.position_offsets.retain(|_id, offset| offset.length() > 0.1);
+        self.position_offsets.retain(|id, offset| {
+            let error_margin = offset.length();
+            error_margin > 0.1 || (*id == self.player && error_margin > 0.4)
+        });
+
         for (id, offset) in &mut self.position_offsets {
             let world = self.world.lock().unwrap();
             if let Ok(mut transform) = world.get::<&mut Transform>(*id) {
@@ -179,16 +183,17 @@ impl Client {
         }
 
         let movement = MovementState { dir };
+        let now = utils::epoch_time_millis();
 
         messages.push(ClientMessage::Movement {
             movement: movement.clone(),
-            timestamp: utils::epoch_time_millis(),
+            timestamp: now,
         });
 
         self.handle_movement_update(
             self.player,
             movement,
-            utils::epoch_time_millis()
+            now,
         ).await;
 
         messages
