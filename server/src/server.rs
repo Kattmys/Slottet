@@ -42,12 +42,10 @@ impl Server {
         let world = Arc::new(RwLock::new(hecs::World::new()));
         let clients = BiMap::new();
 
-        println!("generating map...");
         let map_filename = "maps/test-map.toml";
         let map = map::load_map(map_filename)
             .expect(&*format!("could not load {map_filename}"));
-        println!("loaded map:");
-        crate::map::print_map(&map);
+        // crate::map::print_map(&map);
 
         let last_render_spot = HashMap::new();
 
