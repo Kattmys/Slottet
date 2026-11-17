@@ -46,6 +46,7 @@ impl TextureManager {
 
                 } else if let Some(str_path) = path.to_str() {
                     let texture = load_texture(str_path).await?;
+                    texture.set_filter(macroquad::texture::FilterMode::Nearest);
                     if let Some(key) = path
                         .strip_prefix(prefix)?
                         .to_str() {
