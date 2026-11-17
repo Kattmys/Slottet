@@ -337,8 +337,8 @@ impl Client {
 
             'render_back: {
                 let back_path = match tile.back {
-                    BackTile::Grass => "grass.png",
-                    BackTile::Stone => "stone_block.png",
+                    BackTile::Grass => "back/grass.png",
+                    BackTile::Stone => "back/stone.png",
                     BackTile::None => { break 'render_back }
                 };
 
@@ -357,9 +357,9 @@ impl Client {
 
             'render_front: {
                 let path = match tile.front {
-                    FrontTile::Tree => "tree.png",
-                    FrontTile::Wall => "wall.png",
-                    FrontTile::Stone => "stone.png",
+                    FrontTile::Tree  => "front/tree.png",
+                    FrontTile::Wall  => "front/wall.png",
+                    FrontTile::Stone => "front/stone.png",
                     FrontTile::None => { break 'render_front }
                 };
 
