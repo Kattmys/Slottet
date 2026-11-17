@@ -1,11 +1,11 @@
 mod texture;
 mod keybinds;
-mod terrain;
+mod map;
 
 use crate::texture::TextureManager;
 use crate::keybinds::{ Event, KeyMap, load_keymap };
-use crate::terrain::Terrain;
-use common::terrain::{ Tile, FrontTile, BackTile, TILE_SIZE };
+use crate::map::Map;
+use common::map::{ Tile, FrontTile, BackTile, TILE_SIZE };
 use common::{
     Result,
     LATENCY,
@@ -39,7 +39,7 @@ struct Client {
     keymap: KeyMap,
     textures: TextureManager,
     position_offsets: HashMap<hecs::Entity, Vec2>,
-    terrain: Terrain,
+    map: Map,
 }
 
 macro_rules! update_components {
@@ -60,12 +60,12 @@ impl Client {
         let textures = TextureManager::init("assets").await?;
         let keymap = load_keymap();
         let position_offsets = HashMap::new();
-        let terrain = {
+        let map = {
             let origin_pos = Vec2::ZERO;
             let height = 0;
             let width = 0;
             let tiles = Vec::new();
-            Terrain { origin_pos, height, width, tiles }
+            Map { origin_pos, height, width, tiles }
         };
 
         Ok(Self {
@@ -76,7 +76,7 @@ impl Client {
 			textures,
 			keymap,
             position_offsets,
-            terrain,
+            map,
         })
     }
 
@@ -175,8 +175,9 @@ impl Client {
 
         for event in events {
             match event {
-                Event::Attack  => println!("Attacking enemy..."),
-
+                Event::Attack => {
+                    println!("Attacking...")
+                }
                 // already handled
                 Event::GoUp | Event::GoLeft | Event::GoDown | Event::GoRight => {}
             }
@@ -248,23 +249,23 @@ impl Client {
                     }
                 }
             }
-            ServerMessage::TerrainData { origin_pos, world_width, world_height } => {
-                self.terrain.origin_pos = origin_pos;
-                self.terrain.width = world_width;
-                self.terrain.height = world_height;
-                self.terrain.tiles = vec![Tile::grass(); world_width * world_height];
+            ServerMessage::MapData { origin_pos, world_width, world_height } => {
+                self.map.origin_pos = origin_pos;
+                self.map.width = world_width;
+                self.map.height = world_height;
+                self.map.tiles = vec![Tile::grass(); world_width * world_height];
             }
 
-            ServerMessage::TerrainPart { index, tiles } => {
+            ServerMessage::MapPart { index, tiles } => {
                 let end = index + tiles.len();
-                if end > self.terrain.tiles.len() {
+                if end > self.map.tiles.len() {
                     eprintln!(
-                        "Terrain part {index}..{end} is outside the terrain ({} tiles)",
-                        self.terrain.tiles.len()
+                        "Map part {index}..{end} is outside the map ({} tiles)",
+                        self.map.tiles.len()
                     );
                     return;
                 }
-                self.terrain.tiles[index..end].copy_from_slice(&tiles);
+                self.map.tiles[index..end].copy_from_slice(&tiles);
             }
 
 
@@ -311,7 +312,7 @@ impl Client {
         messages.push(ClientMessage::Disconnect);
     }
 
-    async fn render_terrain(&self, viewport_offset: Vec2) {
+    async fn render_map(&self, viewport_offset: Vec2) {
         const UNKNOWN_TEXTURE: &'static [u8] = &[
             //  R,   G, B,   A,
             0,   0, 0,   255, // BLACK
@@ -320,17 +321,17 @@ impl Client {
             0,   0, 0,   255, // BLACK
         ];
 
-        if self.terrain.width == 0 {
+        if self.map.width == 0 {
             return;
         }
 
         let unknown = Texture2D::from_rgba8(2, 2, UNKNOWN_TEXTURE);
         let tile_size = vec2(TILE_SIZE, TILE_SIZE);
 
-        for (idx, tile) in self.terrain.tiles.iter().enumerate() {
-            let x = idx % self.terrain.width;
-            let y = idx / self.terrain.width;
-            let pos = self.terrain.origin_pos
+        for (idx, tile) in self.map.tiles.iter().enumerate() {
+            let x = idx % self.map.width;
+            let y = idx / self.map.width;
+            let pos = self.map.origin_pos
             + vec2(x as f32, y as f32) * TILE_SIZE
             - viewport_offset;
 
@@ -403,7 +404,7 @@ impl Client {
             }
         };
 
-        self.render_terrain(viewport_offset).await;
+        self.render_map(viewport_offset).await;
 
         {
             let world = self.world.lock().unwrap();

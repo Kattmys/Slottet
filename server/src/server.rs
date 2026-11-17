@@ -1,5 +1,5 @@
 use common::utils::{ Counter, CounterType };
-use common::terrain::{ Tile, TILE_SIZE };
+use common::map::{ Tile, TILE_SIZE };
 use common::{
     Result,
     LATENCY,
@@ -11,7 +11,7 @@ use common::{
     sleep_until,
 };
 
-use crate::terrain::generate_terrain;
+use crate::map::generate_map;
 
 use std::time::Duration;
 use std::collections::HashMap;
@@ -30,7 +30,7 @@ pub struct Server {
     transport: NetcodeServerTransport,
     world: Arc<RwLock<hecs::World>>,
     clients: BiMap<ClientId, hecs::Entity>,
-    terrain: [[Tile; 64]; 64],
+    map: [[Tile; 64]; 64],
     last_render_spot: HashMap<hecs::Entity, Vec2>,
 }
 
@@ -43,9 +43,9 @@ impl Server {
         let clients = BiMap::new();
 
         println!("generating map...");
-        let terrain = generate_terrain();
+        let map = generate_map();
         println!("Done! map:");
-        crate::terrain::print_terrain(&terrain);
+        crate::map::print_map(&map);
 
         let last_render_spot = HashMap::new();
 
@@ -54,7 +54,7 @@ impl Server {
             transport,
             world,
             clients,
-            terrain,
+            map,
             last_render_spot,
         })
     }
@@ -87,13 +87,13 @@ impl Server {
                 messages.push(self.get_column_msg(column_counter.step(1)).await);
             }
             
-            self.send_terrain().await;
+            self.send_map().await;
 
             self.handle_network(delta, messages).await.expect("network error");
         }
     }
 
-    async fn send_terrain(&mut self) {
+    async fn send_map(&mut self) {
         let world = self.world.read().await;
         let entities: Vec<(hecs::Entity, Vec2)> = world
             .query::<(hecs::Entity, &Transform)>()
@@ -112,7 +112,7 @@ impl Server {
             };
             let mut tile_messages = vec![];
 
-            let row_len = self.terrain.get(0)
+            let row_len = self.map.get(0)
                 .and_then(|row| Some(row.len()))
                 .unwrap_or(0);
 
@@ -120,18 +120,18 @@ impl Server {
             let tile_y = (pos.y / TILE_SIZE).max(0.0) as usize;
 
             let north = tile_y.saturating_sub(RENDER_DISTANCE / 2);
-            let south = (tile_y + RENDER_DISTANCE / 2).min(self.terrain.len());
+            let south = (tile_y + RENDER_DISTANCE / 2).min(self.map.len());
             let west = tile_x.saturating_sub(RENDER_DISTANCE / 2);
             let east = (tile_x + RENDER_DISTANCE / 2).min(row_len);
 
             for y in north..south {
-                let Some(row) = self.terrain.get(y) else {
+                let Some(row) = self.map.get(y) else {
                     continue;
                 };
 
                 let tiles = row[west..east].to_vec().into_boxed_slice();
 
-                tile_messages.push(ServerMessage::TerrainPart {
+                tile_messages.push(ServerMessage::MapPart {
                     index: y * row_len + west,
                     tiles,
                 });
@@ -240,10 +240,10 @@ impl Server {
                 ServerMessage::InitialData {
                     entity: entity_id,
                 },
-                ServerMessage::TerrainData {
+                ServerMessage::MapData {
                     origin_pos: Vec2::ZERO,
-                    world_width: self.terrain.len(),
-                    world_height: self.terrain.get(0)
+                    world_width: self.map.len(),
+                    world_height: self.map.get(0)
                         .and_then(|row| Some(row.len()))
                         .unwrap_or(0),
                 },

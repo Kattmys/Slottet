@@ -1,2 +1,2 @@
 pub mod server;
-pub mod terrain;
+pub mod map;

@@ -1,5 +1,5 @@
 mod server;
-pub mod terrain;
+pub mod map;
 
 use std::{ env };
 use common::Result;

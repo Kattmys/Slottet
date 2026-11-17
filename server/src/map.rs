@@ -1,6 +1,6 @@
-use common::terrain::{ Tile, FrontTile };
+use common::map::{ Tile, FrontTile };
 
-pub fn generate_terrain<const W: usize, const H: usize>() -> [[Tile; W]; H] {
+pub fn generate_map<const W: usize, const H: usize>() -> [[Tile; W]; H] {
     let mut map = [[const { Tile::grass() }; W]; H];
 
     for y in 0..H {
@@ -14,12 +14,12 @@ pub fn generate_terrain<const W: usize, const H: usize>() -> [[Tile; W]; H] {
     map
 }
 
-pub fn print_terrain<const W: usize, const H: usize>(terrain: &[[Tile; W]; H]) {
-    for _ in 0..terrain[0].len() {
+pub fn print_map<const W: usize, const H: usize>(map: &[[Tile; W]; H]) {
+    for _ in 0..map[0].len() {
         print!("=");
     }
     println!("====");
-    for row in terrain {
+    for row in map {
         print!("||");
         for tile in row {
             if matches!(tile.front, FrontTile::Stone) {
@@ -30,7 +30,7 @@ pub fn print_terrain<const W: usize, const H: usize>(terrain: &[[Tile; W]; H]) {
         }
         println!("||");
     }
-    for _ in 0..terrain[0].len() {
+    for _ in 0..map[0].len() {
         print!("=");
     }
     println!("====");
