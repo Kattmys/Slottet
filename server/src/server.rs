@@ -224,10 +224,11 @@ impl Server {
 
     async fn handle_connect(&mut self, client_id: ClientId) {
         let entity_id = {
+            let pos = vec2(32.0 * TILE_SIZE, 32.0 * TILE_SIZE);
             let mut world = self.world.write().await;
             world.spawn(PlayerBundle {
                 player: Player,
-                transform: Transform::new(vec2(0.0, 0.0)),
+                transform: Transform::new(pos),
                 movement_state: MovementState {
                     dir: Direction::None,
                 },
