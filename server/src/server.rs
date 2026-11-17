@@ -11,7 +11,7 @@ use common::{
     sleep_until,
 };
 
-use crate::map::generate_map;
+use crate::map;
 
 use std::time::Duration;
 use std::collections::HashMap;
@@ -43,8 +43,10 @@ impl Server {
         let clients = BiMap::new();
 
         println!("generating map...");
-        let map = generate_map();
-        println!("Done! map:");
+        let map_filename = "maps/test-map.toml";
+        let map = map::load_map(map_filename)
+            .expect(&*format!("could not load {map_filename}"));
+        println!("loaded map:");
         crate::map::print_map(&map);
 
         let last_render_spot = HashMap::new();

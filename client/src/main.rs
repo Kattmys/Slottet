@@ -253,7 +253,7 @@ impl Client {
                 self.map.origin_pos = origin_pos;
                 self.map.width = world_width;
                 self.map.height = world_height;
-                self.map.tiles = vec![Tile::grass(); world_width * world_height];
+                self.map.tiles = vec![Tile::empty(); world_width * world_height];
             }
 
             ServerMessage::MapPart { index, tiles } => {
@@ -335,31 +335,34 @@ impl Client {
             + vec2(x as f32, y as f32) * TILE_SIZE
             - viewport_offset;
 
-            let back_path = match tile.back {
-                BackTile::Grass => "grass.png",
-                BackTile::Stone => "stone_block.png",
-            };
+            'render_back: {
+                let back_path = match tile.back {
+                    BackTile::Grass => "grass.png",
+                    BackTile::Stone => "stone_block.png",
+                    BackTile::None => { break 'render_back }
+                };
 
-            let back = self.textures.get(back_path).await.unwrap_or(&unknown);
-            draw_texture_ex(
-                back,
-                pos.x,
-                pos.y,
-                WHITE,
-                DrawTextureParams {
-                    dest_size: Some(tile_size),
-                    ..Default::default()
-                },
-            );
+                let back = self.textures.get(back_path).await.unwrap_or(&unknown);
+                draw_texture_ex(
+                    back,
+                    pos.x,
+                    pos.y,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(tile_size),
+                        ..Default::default()
+                    },
+                );
+            }
 
-            let front_path = match tile.front {
-                FrontTile::Tree => Some("tree.png"),
-                FrontTile::Wall => Some("wall.png"),
-                FrontTile::Stone => Some("stone.png"),
-                FrontTile::None => None,
-            };
+            'render_front: {
+                let path = match tile.front {
+                    FrontTile::Tree => "tree.png",
+                    FrontTile::Wall => "wall.png",
+                    FrontTile::Stone => "stone.png",
+                    FrontTile::None => { break 'render_front }
+                };
 
-            if let Some(path) = front_path {
                 let front = self.textures.get(path).await.unwrap_or(&unknown);
                 draw_texture_ex(
                     front,
