@@ -51,18 +51,24 @@ pub fn load_map<const W: usize, const H: usize>(filename: &str) -> Result<[[Tile
         }
     }
 
-    // for y in 0..H {
-    //     for x in 0..W {
-    //         if rand::random_bool(1.0 / 30.0) {
-    //             map[y][x].front = FrontTile::Stone;
-    //         }
-    //     }
-    // }
+    for y in 0..H {
+        for x in 0..W {
+            if matches!(
+                (map[y][x].front, map[y][x].back),
+                (FrontTile::None, BackTile::Grass)
+            ) {
+                if rand::random_bool(1.0 / 30.0) {
+                    map[y][x].front = FrontTile::Flowers;
+                }
+            }
+        }
+    }
 
     Ok(map)
 }
 
-pub fn print_map<const W: usize, const H: usize>(map: &[[Tile; W]; H]) {
+#[allow(unused)]
+pub(crate) fn print_map<const W: usize, const H: usize>(map: &[[Tile; W]; H]) {
     for _ in 0..map[0].len() {
         print!("=");
     }

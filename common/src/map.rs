@@ -14,6 +14,7 @@ pub enum FrontTile {
     Tree,
     Wall,
     Stone,
+    Flowers,
     None,
 }
 
@@ -28,7 +29,7 @@ impl BackTile {
         match string {
             "grass" => Ok(Self::Grass),
             "stone" => Ok(Self::Stone),
-            "none"  => Ok(Self::None),
+            "none" => Ok(Self::None),
             _ => Err(format!("could not create BackTile from {string}").into())
         }
     }
@@ -37,10 +38,11 @@ impl BackTile {
 impl FrontTile {
     pub fn from_str(string: &str) -> Result<Self> {
         match string {
-            "tree"  => Ok(Self::Tree),
-            "wall"  => Ok(Self::Wall),
+            "tree" => Ok(Self::Tree),
+            "wall" => Ok(Self::Wall),
             "stone" => Ok(Self::Stone),
-            "none"  => Ok(Self::None),
+            "flowers" => Ok(Self::Flowers),
+            "none" => Ok(Self::None),
             _ => Err(format!("could not create FrontTile from {string}").into())
         }
     }

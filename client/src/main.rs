@@ -357,9 +357,10 @@ impl Client {
 
             'render_front: {
                 let path = match tile.front {
-                    FrontTile::Tree  => "front/tree.png",
-                    FrontTile::Wall  => "front/wall.png",
+                    FrontTile::Tree => "front/tree.png",
+                    FrontTile::Wall => "front/wall.png",
                     FrontTile::Stone => "front/stone.png",
+                    FrontTile::Flowers => "front/flowers.png",
                     FrontTile::None => { break 'render_front }
                 };
 
