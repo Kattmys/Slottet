@@ -169,12 +169,14 @@ impl Server {
     }
 
     async fn get_column_msg(&self, index: CounterType) -> ServerMessage {
-        debug_assert_eq!(NUM_COLUMNS, 3);
+        debug_assert_eq!(NUM_COLUMNS, 4);
         let world = self.world.read().await;
         let columns = match index {
             0 => columns!(world, [Player]),
             1 => columns!(world, [Transform]),
             2 => columns!(world, [MovementState]),
+            // TODO do not send everyone's inventory to everyone
+            3 => columns!(world, [Inventory]),
             _ => unreachable!()
         };
         ServerMessage::World(columns)
@@ -259,7 +261,8 @@ impl Server {
                     columns!(self.world.read().await, [
                         Player,
                         Transform,
-                        MovementState
+                        MovementState,
+                        Inventory
                     ])
                 ),
             ]).unwrap()

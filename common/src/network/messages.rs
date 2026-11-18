@@ -48,9 +48,10 @@ pub struct Columns {
     pub Player: Column<components::Player>,
     pub Transform: Column<components::Transform>,
     pub MovementState: Column<components::MovementState>,
+    pub Inventory: Column<components::Inventory>,
 }
 
-pub const NUM_COLUMNS: u64 = 3;
+pub const NUM_COLUMNS: u64 = 4;
 
 #[macro_export]
 macro_rules! columns {

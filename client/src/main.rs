@@ -13,14 +13,20 @@ use common::{
     sleep_until,
 };
 use common::network::{
+    RENET_CHANNELS,
+    NUM_COLUMNS,
     ClientMessage,
     ServerMessage,
     create_client,
-    RENET_CHANNELS,
     serialize,
     deserialize,
 };
-use common::components::{ Transform, MovementState, Direction };
+use common::components::{
+    Transform,
+    MovementState,
+    Direction,
+    Inventory,
+};
 use common::{ systems, utils };
 
 use macroquad::prelude::*;
@@ -34,6 +40,7 @@ use renet_netcode::NetcodeClientTransport;
 struct Client {
     client: RenetClient,
     transport: NetcodeClientTransport,
+    // TODO make RwLock
     world: Arc<Mutex<hecs::World>>,
     player: hecs::Entity,
     keymap: KeyMap,
@@ -60,6 +67,7 @@ impl Client {
         let textures = TextureManager::init("assets").await?;
         let keymap = load_keymap();
         let position_offsets = HashMap::new();
+
         let map = {
             let origin_pos = Vec2::ZERO;
             let height = 0;
@@ -153,7 +161,7 @@ impl Client {
 
         let events: Vec<_> = get_keys_down()
             .iter()
-            .filter_map(|key| self.keymap.get(key))
+            .filter_map(|key| self.keymap.get(key).cloned())
             .collect();
 
         let dir = {
@@ -176,7 +184,7 @@ impl Client {
         for event in events {
             match event {
                 Event::Attack => {
-                    println!("Attacking...")
+                    self.use_item();
                 }
                 // already handled
                 Event::GoUp | Event::GoLeft | Event::GoDown | Event::GoRight => {}
@@ -198,6 +206,20 @@ impl Client {
         ).await;
 
         messages
+    }
+
+    fn use_item(&mut self) {
+        let world = self.world.lock().unwrap();
+        if let Ok(mut inventory) = world.get::<&mut Inventory>(self.player) {
+            if let Some(item_obj) = inventory.selected() {
+                let now = utils::epoch_time_millis();
+                let time_since_used = now - item_obj.last_used;
+                if item_obj.ty.firing_cooldown_time() <= time_since_used {
+                    println!("use!");
+                    item_obj.last_used = now;
+                }
+            }
+        }
     }
 
     async fn handle_movement_update
@@ -233,10 +255,14 @@ impl Client {
                     }
                 }
 
+                debug_assert_eq!(NUM_COLUMNS, 4);
                 update_components!(self.world.lock().unwrap(), columns, [
                     Player,
                     MovementState
                 ]);
+                // handled separately:
+                //     Transform
+                //     Inventory
 
                 for (id, real_transform) in columns.Transform {
                     let mut world = self.world.lock().unwrap();
@@ -248,7 +274,18 @@ impl Client {
                         world.insert(id, (real_transform,)).unwrap();
                     }
                 }
+
+                // insert Inventory component if not present
+                // if present, ignore completely
+                // TODO do not ignore completely
+                for (id, server_inventory) in columns.Inventory {
+                    let mut world = self.world.lock().unwrap();
+                    if world.get::<&Inventory>(id).is_err() {
+                        world.insert(id, (server_inventory,)).unwrap();
+                    }
+                }
             }
+
             ServerMessage::MapData { origin_pos, world_width, world_height } => {
                 self.map.origin_pos = origin_pos;
                 self.map.width = world_width;
