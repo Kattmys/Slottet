@@ -89,12 +89,6 @@ impl Client {
 
     async fn run(&mut self) {
         prevent_quit();
-        {
-            let world = self.world.clone();
-            std::thread::spawn(move || {
-                Self::update_movement_loop(world);
-            });
-        }
 
         loop {
             let delta = Duration::from_secs_f32(get_frame_time());
@@ -118,24 +112,13 @@ impl Client {
             self.handle_exit(&mut messages);
         }
 
+        {
+            let mut world = self.world.write().unwrap();
+            systems::update_movement(&mut world, delta);
+        }
+
         self.handle_network(delta, messages).await.expect("network error");
         self.handle_position_offsets(delta).await;
-    }
-
-    fn update_movement_loop(world: Arc<RwLock<hecs::World>>) {
-        let delta_fix = Duration::from_millis(1000 / TICK_RATE);
-        let mut last_tick = Instant::now();
-
-        loop {
-            let now = Instant::now();
-            let delta = now.duration_since(last_tick);
-            last_tick = now;
-            {
-                let mut world = world.write().unwrap();
-                systems::update_movement(&mut world, delta);
-            }
-            std::thread::sleep(delta_fix - Instant::now().duration_since(last_tick));
-        }
     }
 
     async fn handle_position_offsets(&mut self, delta: Duration) {
@@ -350,7 +333,6 @@ impl Client {
 
     async fn render_map(&self, viewport_offset: Vec2) {
         const UNKNOWN_TEXTURE: &'static [u8] = &[
-            //  R,   G, B,   A,
             0,   0, 0,   255, // BLACK
             255, 0, 255, 255, // PURPLE
             255, 0, 255, 255, // PURPLE
