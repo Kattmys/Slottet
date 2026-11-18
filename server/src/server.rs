@@ -24,6 +24,7 @@ use bimap::BiMap;
 
 // TODO replace with tokio timer
 const COLUMN_SEND_COUNTER: u64 = 1;
+const DEFAULT_MAX_INVENTORY_SIZE: u8 = 3;
 
 pub struct Server {
     server: RenetServer,
@@ -223,12 +224,18 @@ impl Server {
     async fn handle_connect(&mut self, client_id: ClientId) {
         let entity_id = {
             let pos = vec2(32.0 * TILE_SIZE, 32.0 * TILE_SIZE);
+            let inventory = vec![Item::new(ItemType::Axe)];
             let mut world = self.world.write().await;
             world.spawn(PlayerBundle {
                 player: Player,
                 transform: Transform::new(pos),
                 movement_state: MovementState {
                     dir: Direction::None,
+                },
+                inventory: Inventory {
+                    slots: inventory,
+                    selected: 0,
+                    max_size: DEFAULT_MAX_INVENTORY_SIZE,
                 },
             })
         };
