@@ -9,7 +9,6 @@ use common::map::{ Tile, FrontTile, BackTile, TILE_SIZE };
 use common::{
     Result,
     LATENCY,
-    TICK_RATE,
     sleep_until,
 };
 use common::network::{
@@ -31,7 +30,7 @@ use common::{ systems, utils };
 
 use macroquad::prelude::*;
 use std::env;
-use std::time::{ Duration, Instant };
+use std::time::Duration;
 use std::sync::{ Arc, RwLock };
 use std::collections::HashMap;
 use renet::{ RenetClient, DefaultChannel };

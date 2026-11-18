@@ -70,17 +70,15 @@ impl Server {
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut last_tick = tokio::time::Instant::now();
 
-        {
-            let world = Arc::clone(&self.world);
-            tokio::task::spawn(async move {
-                Self::update_movement_loop(world).await;
-            });
-        }
-
         loop {
             let now = interval.tick().await;
             let delta = now.duration_since(last_tick);
             last_tick = now;
+
+            {
+                let mut world = self.world.write().await;
+                systems::update_movement(&mut world, delta);
+            }
 
             let mut messages = Vec::new();
 
@@ -146,25 +144,6 @@ impl Server {
                 DefaultChannel::ReliableUnordered,
                 serialize(tile_messages).unwrap()
             );
-        }
-    }
-
-    async fn update_movement_loop(world: Arc<RwLock<hecs::World>>) {
-        let mut interval = tokio::time::interval(
-            Duration::from_millis(1000 / TICK_RATE)
-        );
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let mut last_tick = tokio::time::Instant::now();
-
-        loop {
-            let now = interval.tick().await;
-            let delta = now.duration_since(last_tick);
-            last_tick = now;
-
-            {
-                let mut world = world.write().await;
-                systems::update_movement(&mut world, delta);
-            }
         }
     }
 
