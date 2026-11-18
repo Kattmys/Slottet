@@ -51,13 +51,26 @@ pub fn load_map<const W: usize, const H: usize>(filename: &str) -> Result<[[Tile
         }
     }
 
-    for y in 0..H {
-        for x in 0..W {
-            if matches!(
-                (map[y][x].front, map[y][x].back),
-                (FrontTile::None, BackTile::Grass)
-            ) {
-                if rand::random_bool(1.0 / 30.0) {
+    // random scattering is implemented as follows:
+    // the map is divided into divisions, each with the size:
+    // (SCATTER_DIVISION_SIZE, SCATTER_DIVISION_SIZE),
+    // and in each such division, up to SCATTER_AMOUNT flowers is placed.
+
+    const SCATTER_DIVISION_SIZE: usize = 4;
+    const SCATTER_AMOUNT: usize = 1;
+
+    for y in 0..(H / SCATTER_DIVISION_SIZE) {
+        for x in 0..(W / SCATTER_DIVISION_SIZE) {
+            for _ in 0..SCATTER_AMOUNT {
+                let y = y * SCATTER_DIVISION_SIZE
+                    + rand::random_range(0..SCATTER_DIVISION_SIZE);
+                let x = x * SCATTER_DIVISION_SIZE
+                    + rand::random_range(0..SCATTER_DIVISION_SIZE);
+
+                if matches!(
+                    (map[y][x].front, map[y][x].back),
+                    (FrontTile::None, BackTile::Grass)
+                ) {
                     map[y][x].front = FrontTile::Flowers;
                 }
             }
