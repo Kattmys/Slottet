@@ -1,5 +1,5 @@
 use common::utils::{ Counter, CounterType };
-use common::map::{ Map, Tile };
+use common::map::Map;
 use common::{
     Result,
     LATENCY,
@@ -96,64 +96,74 @@ impl Server {
                 messages.push(self.get_column_msg(column_counter.step(1)).await);
             }
             
-            self.send_map().await;
+            // self.send_map().await;
 
             self.handle_network(delta, messages).await.expect("network error");
         }
     }
 
-    async fn send_map(&mut self) {
-        let world = self.world.read().await;
-        let entities: Vec<(hecs::Entity, Vec2)> = world
-            .query::<(hecs::Entity, &Transform)>()
-            .iter()
-            .filter(|(entity, transform)| match self.last_render_spot.get(entity) {
-                Some(last) => last.distance(transform.pos) > RENDER_DISTANCE as f32,
-                None => true,
-            })
-            .map(|(entity, transform)| (entity, transform.pos))
-            .collect();
-
-        for (entity, pos) in entities {
-            // TODO handle connection error
-            let Some(client_id) = self.clients.get_by_right(&entity) else {
-                continue;
-            };
-            let mut tile_messages = vec![];
-
-            // let row_len = self.map.get(0)
-            //     .and_then(|row| Some(row.len()))
-            //     .unwrap_or(0);
-
-            let tile_x = pos.x as usize;
-            let tile_y = pos.y as usize;
-
-            // TODO take origin_pos in beaktande
-            let north = tile_y.saturating_sub(RENDER_DISTANCE / 2);
-            let south = (tile_y + RENDER_DISTANCE / 2)
-                .min(self.map.height);
-            let west = tile_x.saturating_sub(RENDER_DISTANCE / 2);
-            let east = (tile_x + RENDER_DISTANCE / 2)
-                .min(self.map.width);
-
-            for y in north..south {
-                let tiles = self.map.tiles[(west + y * self.map.width)..(east + y * self.map.width)].to_vec().into_boxed_slice();
-
-                tile_messages.push(ServerMessage::MapPart {
-                    index: y * self.map.height + west,
-                    tiles,
-                });
-            }
-
-            self.last_render_spot.insert(entity, pos);
-
-            self.server.send_message(
-                *client_id,
-                DefaultChannel::ReliableUnordered,
-                serialize(tile_messages).unwrap()
-            );
+    async fn send_map(&mut self) -> ServerMessage {
+        // eftersom den förra inte fungerade
+        ServerMessage::MapPart {
+            index: 0,
+            tiles: self.map.tiles.clone().into(),
         }
     }
+
+    // async fn send_map(&mut self) {
+    //     let world = self.world.read().await;
+    //     let entities: Vec<(hecs::Entity, Vec2)> = world
+    //         .query::<(hecs::Entity, &Transform)>()
+    //         .iter()
+    //         .filter(|(entity, transform)| match self.last_render_spot.get(entity) {
+    //             Some(last) => last.distance(transform.pos) > RENDER_DISTANCE as f32,
+    //             None => true,
+    //         })
+    //         .map(|(entity, transform)| (entity, transform.pos))
+    //         .collect();
+
+    //     for (entity, pos) in entities {
+    //         // TODO handle connection error
+    //         let Some(client_id) = self.clients.get_by_right(&entity) else {
+    //             continue;
+    //         };
+    //         let mut tile_messages = vec![];
+
+    //         // let row_len = self.map.get(0)
+    //         //     .and_then(|row| Some(row.len()))
+    //         //     .unwrap_or(0);
+
+    //         let tile_x = pos.x as usize;
+    //         let tile_y = pos.y as usize;
+
+    //         // TODO take origin_pos in beaktande
+    //         let north = tile_y.saturating_sub(RENDER_DISTANCE / 2);
+    //         let south = (tile_y + RENDER_DISTANCE / 2)
+    //             .min(self.map.height);
+    //         let west = tile_x.saturating_sub(RENDER_DISTANCE / 2);
+    //         let east = (tile_x + RENDER_DISTANCE / 2)
+    //             .min(self.map.width);
+
+    //         for y in north..south {
+    //             let tiles = self.map.tiles[
+    //                 (west + y * self.map.width)..(east + y * self.map.width)
+    //             ].to_vec().into_boxed_slice();
+
+    //             tile_messages.push(ServerMessage::MapPart {
+    //                 index: y * self.map.height + west,
+    //                 tiles,
+    //             });
+    //         }
+
+    //         self.last_render_spot.insert(entity, pos);
+
+    //         self.server.send_message(
+    //             *client_id,
+    //             DefaultChannel::ReliableUnordered,
+    //             serialize(tile_messages).unwrap()
+    //         );
+    //     }
+    // }
 
     async fn get_column_msg(&self, index: CounterType) -> ServerMessage {
         debug_assert_eq!(NUM_COLUMNS, 4);
@@ -229,6 +239,8 @@ impl Server {
             })
         };
 
+        let map_msg = self.send_map().await;
+
         self.clients.insert(client_id, entity_id);
         self.server.send_message(
             client_id,
@@ -250,6 +262,7 @@ impl Server {
                         Inventory
                     ])
                 ),
+                map_msg,
             ]).unwrap()
         );
     }
