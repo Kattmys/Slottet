@@ -1,5 +1,5 @@
 use common::utils::{ Counter, CounterType };
-use common::map::{ Map, Tile, TILE_SIZE };
+use common::map::{ Map, Tile };
 use common::{
     Result,
     LATENCY,
@@ -24,6 +24,7 @@ use bimap::BiMap;
 
 // TODO replace with tokio timer
 const COLUMN_SEND_COUNTER: u64 = 1;
+const DEFAULT_MAX_INVENTORY_SIZE: u8 = 3;
 
 pub struct Server {
     server: RenetServer,
@@ -79,17 +80,15 @@ impl Server {
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut last_tick = tokio::time::Instant::now();
 
-        {
-            let world = Arc::clone(&self.world);
-            tokio::task::spawn(async move {
-                Self::update_movement_loop(world).await;
-            });
-        }
-
         loop {
             let now = interval.tick().await;
             let delta = now.duration_since(last_tick);
             last_tick = now;
+
+            {
+                let mut world = self.world.write().await;
+                systems::update_movement(&mut world, &self.map, delta);
+            }
 
             let mut messages = Vec::new();
 
@@ -126,8 +125,8 @@ impl Server {
             //     .and_then(|row| Some(row.len()))
             //     .unwrap_or(0);
 
-            let tile_x = (pos.x / TILE_SIZE).max(0.0) as usize;
-            let tile_y = (pos.y / TILE_SIZE).max(0.0) as usize;
+            let tile_x = pos.x as usize;
+            let tile_y = pos.y as usize;
 
             // TODO take origin_pos in beaktande
             let north = tile_y.saturating_sub(RENDER_DISTANCE / 2);
@@ -148,7 +147,6 @@ impl Server {
 
             self.last_render_spot.insert(entity, pos);
 
-            // TODO make interface for sending messages to specific clients
             self.server.send_message(
                 *client_id,
                 DefaultChannel::ReliableUnordered,
@@ -157,32 +155,15 @@ impl Server {
         }
     }
 
-    async fn update_movement_loop(world: Arc<RwLock<hecs::World>>) {
-        let mut interval = tokio::time::interval(
-            Duration::from_millis(1000 / TICK_RATE)
-        );
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let mut last_tick = tokio::time::Instant::now();
-
-        loop {
-            let now = interval.tick().await;
-            let delta = now.duration_since(last_tick);
-            last_tick = now;
-
-            {
-                let mut world = world.write().await;
-                systems::update_movement(&mut world, &self.map, delta);
-            }
-        }
-    }
-
     async fn get_column_msg(&self, index: CounterType) -> ServerMessage {
-        debug_assert_eq!(NUM_COLUMNS, 3);
+        debug_assert_eq!(NUM_COLUMNS, 4);
         let world = self.world.read().await;
         let columns = match index {
             0 => columns!(world, [Player]),
             1 => columns!(world, [Transform]),
             2 => columns!(world, [MovementState]),
+            // TODO do not send everyone's inventory to everyone
+            3 => columns!(world, [Inventory]),
             _ => unreachable!()
         };
         ServerMessage::World(columns)
@@ -231,13 +212,19 @@ impl Server {
 
     async fn handle_connect(&mut self, client_id: ClientId) {
         let entity_id = {
-            let pos = vec2(32.0 * TILE_SIZE, 32.0 * TILE_SIZE);
+            let pos = vec2(32.0, 32.0);
+            let inventory = vec![Item::new(ItemType::Axe)];
             let mut world = self.world.write().await;
             world.spawn(PlayerBundle {
                 player: Player,
                 transform: Transform::new(pos),
                 movement_state: MovementState {
                     dir: Direction::None,
+                },
+                inventory: Inventory {
+                    slots: inventory,
+                    selected: 0,
+                    max_size: DEFAULT_MAX_INVENTORY_SIZE,
                 },
             })
         };
@@ -259,7 +246,8 @@ impl Server {
                     columns!(self.world.read().await, [
                         Player,
                         Transform,
-                        MovementState
+                        MovementState,
+                        Inventory
                     ])
                 ),
             ]).unwrap()

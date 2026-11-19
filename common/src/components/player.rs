@@ -1,4 +1,4 @@
-use super::{ Transform, MovementState };
+use super::{ Transform, MovementState, Inventory };
 use serde::{ Deserialize, Serialize };
 
 pub const ENTITY_SPRITE_SIZE: f32 = 30.0;
@@ -11,4 +11,5 @@ pub struct PlayerBundle {
     pub player: Player,
     pub transform: Transform,
     pub movement_state: MovementState,
+    pub inventory: Inventory,
 }

@@ -4,28 +4,33 @@ mod map;
 
 use crate::texture::TextureManager;
 use crate::keybinds::{ Event, KeyMap, load_keymap };
-use crate::map::Map;
-use common::map::{ Tile, FrontTile, BackTile, TILE_SIZE };
+use common::map::{ Map, Tile, FrontTile, BackTile };
+use common::components::ENTITY_SPRITE_SIZE;
 use common::{
-    Result,
     LATENCY,
-    TICK_RATE,
+    Result,
     sleep_until,
 };
 use common::network::{
+    RENET_CHANNELS,
+    NUM_COLUMNS,
     ClientMessage,
     ServerMessage,
     create_client,
-    RENET_CHANNELS,
     serialize,
     deserialize,
 };
-use common::components::{ Transform, MovementState, Direction };
+use common::components::{
+    Transform,
+    MovementState,
+    Direction,
+    Inventory,
+};
 use common::{ systems, utils };
 
 use macroquad::prelude::*;
 use std::env;
-use std::time::{ Duration, Instant };
+use std::time::Duration;
 use std::sync::{ Arc, RwLock };
 use std::collections::HashMap;
 use renet::{ RenetClient, DefaultChannel };
@@ -40,6 +45,8 @@ struct Client {
     textures: TextureManager,
     position_offsets: HashMap<hecs::Entity, Vec2>,
     map: Map,
+    last_direction: Option<Direction>,
+    tile_size: f32,
 }
 
 macro_rules! update_components {
@@ -57,9 +64,10 @@ impl Client {
         let (client, transport) = create_client(addr)?;
         let world = Arc::new(RwLock::new(hecs::World::new()));
         let player = hecs::Entity::DANGLING;
-        let textures = TextureManager::init("assets").await?;
+        let textures = TextureManager::init("assets");
         let keymap = load_keymap();
         let position_offsets = HashMap::new();
+
         let map = {
             let origin_pos = Vec2::ZERO;
             let height = 0;
@@ -77,17 +85,26 @@ impl Client {
 			keymap,
             position_offsets,
             map,
+            last_direction: None,
+            tile_size: 60.0,
         })
+    }
+
+    async fn load_textures(&mut self) {
+        self.textures.load_textures(&[
+            ("stone_front", "front/stone.png"),
+            ("flowers", "front/flowers.png"),
+            ("grass", "back/grass.png"),
+            ("stone_back", "back/stone.png"),
+            // ("tree", "front/tree.png"),
+            // ("wall", "front/wall.png"),
+        ]).await;
     }
 
     async fn run(&mut self) {
         prevent_quit();
-        {
-            let world = self.world.clone();
-            std::thread::spawn(move || {
-                Self::update_movement_loop(world);
-            });
-        }
+
+        self.load_textures().await;
 
         loop {
             let delta = Duration::from_secs_f32(get_frame_time());
@@ -111,21 +128,13 @@ impl Client {
             self.handle_exit(&mut messages);
         }
 
+        {
+            let mut world = self.world.write().unwrap();
+            systems::update_movement(&mut world, &self.map, delta);
+        }
+
         self.handle_network(delta, messages).await.expect("network error");
         self.handle_position_offsets(delta).await;
-    }
-
-    fn update_movement_loop(world: Arc<RwLock<hecs::World>>) {
-        let delta_fix = Duration::from_millis(1000 / TICK_RATE);
-        let mut last_tick = Instant::now();
-
-        loop {
-            let now = Instant::now();
-            let delta = now.duration_since(last_tick);
-            last_tick = now;
-            systems::update_movement(Arc::clone(&world), delta);
-            std::thread::sleep(delta_fix - Instant::now().duration_since(last_tick));
-        }
     }
 
     async fn handle_position_offsets(&mut self, delta: Duration) {
@@ -135,11 +144,11 @@ impl Client {
         });
 
         for (id, offset) in &mut self.position_offsets {
-            let world = self.world.read().unwrap();
+            let world = self.world.write().unwrap();
             if let Ok(mut transform) = world.get::<&mut Transform>(*id) {
-                let change = offset.normalize() * 100.0 * delta.as_secs_f32();
-                transform.pos += change;
-                *offset -= change;
+                // let change = offset.normalize() * 0.6 * delta.as_secs_f32();
+                // transform.pos += change;
+                // *offset -= change;
             }
         }
     }
@@ -150,7 +159,7 @@ impl Client {
 
         let events: Vec<_> = get_keys_down()
             .iter()
-            .filter_map(|key| self.keymap.get(key))
+            .filter_map(|key| self.keymap.get(key).cloned())
             .collect();
 
         let dir = {
@@ -173,20 +182,25 @@ impl Client {
         for event in events {
             match event {
                 Event::Attack => {
-                    println!("Attacking...")
+                    self.use_item();
                 }
                 // already handled
                 Event::GoUp | Event::GoLeft | Event::GoDown | Event::GoRight => {}
             }
         }
 
-        let movement = MovementState { dir };
+        let movement = MovementState {
+            dir: dir.clone(),
+        };
         let now = utils::epoch_time_millis();
 
-        messages.push(ClientMessage::Movement {
-            movement: movement.clone(),
-            timestamp: now,
-        });
+        if self.last_direction.as_ref().is_none_or(|last_dir| *last_dir != dir) {
+            self.last_direction = Some(dir);
+            messages.push(ClientMessage::Movement {
+                movement: movement.clone(),
+                timestamp: now,
+            });
+        }
 
         self.handle_movement_update(
             self.player,
@@ -197,13 +211,27 @@ impl Client {
         messages
     }
 
+    fn use_item(&mut self) {
+        let world = self.world.write().unwrap();
+        if let Ok(mut inventory) = world.get::<&mut Inventory>(self.player) {
+            if let Some(item_obj) = inventory.selected() {
+                let now = utils::epoch_time_millis();
+                let time_since_used = now - item_obj.last_used;
+                if item_obj.ty.firing_cooldown_time() <= time_since_used {
+                    println!("use!");
+                    item_obj.last_used = now;
+                }
+            }
+        }
+    }
+
     async fn handle_movement_update
         (&mut self, entity: hecs::Entity, movement: MovementState, timestamp: u128)
     {
         let world = self.world.clone();
         std::thread::spawn(move || {
             sleep_until!(thread, timestamp + LATENCY);
-            let world = world.read().unwrap();
+            let world = world.write().unwrap();
             if let Ok(mut entity_movement) = world.get::<&mut MovementState>(entity) {
                 *entity_movement = movement;
             }
@@ -230,10 +258,14 @@ impl Client {
                     }
                 }
 
+                debug_assert_eq!(NUM_COLUMNS, 4);
                 update_components!(self.world.write().unwrap(), columns, [
                     Player,
                     MovementState
                 ]);
+                // handled separately:
+                //     Transform
+                //     Inventory
 
                 for (id, real_transform) in columns.Transform {
                     let mut world = self.world.write().unwrap();
@@ -245,7 +277,18 @@ impl Client {
                         world.insert(id, (real_transform,)).unwrap();
                     }
                 }
+
+                // insert Inventory component if not present
+                // if present, ignore completely
+                // TODO do not ignore completely
+                for (id, server_inventory) in columns.Inventory {
+                    let mut world = self.world.write().unwrap();
+                    if world.get::<&Inventory>(id).is_err() {
+                        world.insert(id, (server_inventory,)).unwrap();
+                    }
+                }
             }
+
             ServerMessage::MapData { origin_pos, world_width, world_height } => {
                 self.map.origin_pos = origin_pos;
                 self.map.width = world_width;
@@ -310,43 +353,34 @@ impl Client {
     }
 
     async fn render_map(&self, viewport_offset: Vec2) {
-        const UNKNOWN_TEXTURE: &'static [u8] = &[
-            //  R,   G, B,   A,
-            0,   0, 0,   255, // BLACK
-            255, 0, 255, 255, // PURPLE
-            255, 0, 255, 255, // PURPLE
-            0,   0, 0,   255, // BLACK
-        ];
+        let tile_vec = vec2(self.tile_size, self.tile_size);
 
         if self.map.width == 0 {
             return;
         }
 
-        let unknown = Texture2D::from_rgba8(2, 2, UNKNOWN_TEXTURE);
-        let tile_size = vec2(TILE_SIZE, TILE_SIZE);
-
         for (idx, tile) in self.map.tiles.iter().enumerate() {
             let x = idx % self.map.width;
             let y = idx / self.map.width;
             let pos = self.map.origin_pos
-            + vec2(x as f32, y as f32) * TILE_SIZE
+            + vec2(x as f32, y as f32) * tile_vec
             - viewport_offset;
 
             'render_back: {
                 let back_path = match tile.back {
-                    BackTile::Grass => "back/grass.png",
-                    BackTile::Stone => "back/stone.png",
+                    BackTile::Grass => "grass",
+                    BackTile::Stone => "stone_back",
                     BackTile::None => { break 'render_back }
                 };
 
-                let back = self.textures.get(back_path).await.unwrap_or(&unknown);
+                let back = self.textures.get(back_path).await;
                 draw_texture_ex(
                     back,
                     pos.x,
                     pos.y,
                     WHITE,
                     DrawTextureParams {
-                        dest_size: Some(tile_size),
+                        dest_size: Some(tile_vec),
                         ..Default::default()
                     },
                 );
@@ -354,20 +388,21 @@ impl Client {
 
             'render_front: {
                 let path = match tile.front {
-                    FrontTile::Tree  => "front/tree.png",
-                    FrontTile::Wall  => "front/wall.png",
-                    FrontTile::Stone => "front/stone.png",
+                    FrontTile::Tree => "tree",
+                    FrontTile::Wall => "wall",
+                    FrontTile::Stone => "stone_front",
+                    FrontTile::Flowers => "flowers",
                     FrontTile::None => { break 'render_front }
                 };
 
-                let front = self.textures.get(path).await.unwrap_or(&unknown);
+                let front = self.textures.get(path).await;
                 draw_texture_ex(
                     front,
                     pos.x,
                     pos.y,
                     WHITE,
                     DrawTextureParams {
-                        dest_size: Some(tile_size),
+                        dest_size: Some(tile_vec),
                         ..Default::default()
                     },
                 );
@@ -397,6 +432,7 @@ impl Client {
             match world.get::<&Transform>(self.player) {
                 Ok(player_transform) => {
                     player_transform.pos
+                    * self.tile_size
                     - vec2(screen_width(), screen_height())
                     / 2.0
                 }
@@ -413,8 +449,8 @@ impl Client {
             {
                 let color = if entity == self.player { GREEN } else { RED };
 
-                let player_x = transform.pos.x - viewport_offset.x;
-                let player_y = transform.pos.y - viewport_offset.y;
+                let player_x = transform.pos.x * self.tile_size - viewport_offset.x;
+                let player_y = transform.pos.y * self.tile_size - viewport_offset.y;
 
                 let dir = Vec2::from(&movement.dir).normalize() * ENTITY_SPRITE_SIZE;
 
