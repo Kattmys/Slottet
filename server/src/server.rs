@@ -115,8 +115,8 @@ impl Server {
                 .and_then(|row| Some(row.len()))
                 .unwrap_or(0);
 
-            let tile_x = pos.x.max(0.0) as usize;
-            let tile_y = pos.y.max(0.0) as usize;
+            let tile_x = pos.x as usize;
+            let tile_y = pos.y as usize;
 
             let north = tile_y.saturating_sub(RENDER_DISTANCE / 2);
             let south = (tile_y + RENDER_DISTANCE / 2).min(self.map.len());
@@ -138,7 +138,6 @@ impl Server {
 
             self.last_render_spot.insert(entity, pos);
 
-            // TODO make interface for sending messages to specific clients
             self.server.send_message(
                 *client_id,
                 DefaultChannel::ReliableUnordered,
