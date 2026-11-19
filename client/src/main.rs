@@ -64,7 +64,7 @@ impl Client {
         let (client, transport) = create_client(addr)?;
         let world = Arc::new(RwLock::new(hecs::World::new()));
         let player = hecs::Entity::DANGLING;
-        let textures = TextureManager::init("assets").await?;
+        let textures = TextureManager::init("assets");
         let keymap = load_keymap();
         let position_offsets = HashMap::new();
 
@@ -90,8 +90,21 @@ impl Client {
         })
     }
 
+    async fn load_textures(&mut self) {
+        self.textures.load_textures(&[
+            ("stone_front", "front/stone.png"),
+            ("flowers", "front/flowers.png"),
+            ("grass", "back/grass.png"),
+            ("stone_back", "back/stone.png"),
+            // ("tree", "front/tree.png"),
+            // ("wall", "front/wall.png"),
+        ]).await;
+    }
+
     async fn run(&mut self) {
         prevent_quit();
+
+        self.load_textures().await;
 
         loop {
             let delta = Duration::from_secs_f32(get_frame_time());
@@ -340,20 +353,11 @@ impl Client {
     }
 
     async fn render_map(&self, viewport_offset: Vec2) {
-        const UNKNOWN_TEXTURE: &'static [u8] = &[
-            0,   0, 0,   255, // BLACK
-            255, 0, 255, 255, // PURPLE
-            255, 0, 255, 255, // PURPLE
-            0,   0, 0,   255, // BLACK
-        ];
-
         let tile_vec = vec2(self.tile_size, self.tile_size);
 
         if self.map.width == 0 {
             return;
         }
-
-        let unknown = Texture2D::from_rgba8(2, 2, UNKNOWN_TEXTURE);
 
         for (idx, tile) in self.map.tiles.iter().enumerate() {
             let x = idx % self.map.width;
@@ -364,12 +368,12 @@ impl Client {
 
             'render_back: {
                 let back_path = match tile.back {
-                    BackTile::Grass => "back/grass.png",
-                    BackTile::Stone => "back/stone.png",
+                    BackTile::Grass => "grass",
+                    BackTile::Stone => "stone_back",
                     BackTile::None => { break 'render_back }
                 };
 
-                let back = self.textures.get(back_path).await.unwrap_or(&unknown);
+                let back = self.textures.get(back_path).await;
                 draw_texture_ex(
                     back,
                     pos.x,
@@ -384,14 +388,14 @@ impl Client {
 
             'render_front: {
                 let path = match tile.front {
-                    FrontTile::Tree => "front/tree.png",
-                    FrontTile::Wall => "front/wall.png",
-                    FrontTile::Stone => "front/stone.png",
-                    FrontTile::Flowers => "front/flowers.png",
+                    FrontTile::Tree => "tree",
+                    FrontTile::Wall => "wall",
+                    FrontTile::Stone => "stone_front",
+                    FrontTile::Flowers => "flowers",
                     FrontTile::None => { break 'render_front }
                 };
 
-                let front = self.textures.get(path).await.unwrap_or(&unknown);
+                let front = self.textures.get(path).await;
                 draw_texture_ex(
                     front,
                     pos.x,

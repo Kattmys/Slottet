@@ -2,60 +2,51 @@ use common::Result;
 
 use macroquad::prelude::*;
 use std::collections::HashMap;
-use std::fs;
-use std::path::Path;
 
 pub struct TextureManager {
-    map: HashMap<String, Texture2D>,
+    textures: HashMap<Box<str>, Texture2D>,
+    error_texture: Texture2D,
+    root: Box<str>,
 }
 
 impl TextureManager {
-    pub async fn init(path_str: &str) -> Result<Self> {
-        let path = Path::new(path_str);
+    pub fn init(root: &str) -> Self {
+        const UNKNOWN_TEXTURE: &'static [u8] = &[
+            0,   0, 0,   255, // BLACK
+            255, 0, 255, 255, // PURPLE
+            255, 0, 255, 255, // PURPLE
+            0,   0, 0,   255, // BLACK
+        ];
 
-        let mut map = HashMap::new();
+        let error_texture = Texture2D::from_rgba8(2, 2, UNKNOWN_TEXTURE);
+        let textures = HashMap::new();
 
-        Self::traverse_textures(
-            &path,
-            path_str,
-            &mut map,
-        ).await?;
-
-        for key in map.keys() {
-            println!("{}", key);
+        Self {
+            textures,
+            error_texture,
+            root: root.into(),
         }
-
-        Ok(Self { map })
-    }
-    
-    pub async fn get(&self, path: &str) -> Option<&Texture2D> {
-        return self.map.get(path)
     }
 
-    async fn traverse_textures(
-        dir: &Path,
-        prefix: &str,
-        data: &mut HashMap<String, Texture2D>
-    ) -> Result<()> {
-        if dir.is_dir() {
-            for entry in fs::read_dir(dir)? {
-                let entry = entry?;
-                let path = entry.path();
-                if path.is_dir() {
-                    Box::pin(Self::traverse_textures(&path, prefix, data)).await?;
+    pub async fn get(&self, id: &str) -> &Texture2D {
+        self.textures.get(id).unwrap_or(&self.error_texture)
+    }
 
-                } else if let Some(str_path) = path.to_str() {
-                    let texture = load_texture(str_path).await?;
-                    texture.set_filter(macroquad::texture::FilterMode::Nearest);
-                    if let Some(key) = path
-                        .strip_prefix(prefix)?
-                        .to_str() {
-                        data.insert(key.to_string(), texture);
-                    }
-                }
+    pub async fn load_textures(&mut self, id_path_map: &[(&str, &str)]) {
+        for (id, path) in id_path_map {
+            let result = self.load_texture(id, path).await;
+            if let Err(e) = result {
+                eprintln!("error when loading texture {id} from {path}: {e}");
             }
         }
-
+    }
+    
+    pub async fn load_texture(&mut self, id: &str, path: &str) -> Result<()> {
+        let path = format!("{}/{}", self.root, path);
+        let texture = load_texture(&path).await?;
+        println!("loaded {id} from {path}");
+        texture.set_filter(macroquad::texture::FilterMode::Nearest);
+        self.textures.insert(id.into(), texture);
         Ok(())
     }
 }
