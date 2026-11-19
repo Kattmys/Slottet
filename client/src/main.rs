@@ -45,6 +45,7 @@ struct Client {
     textures: TextureManager,
     position_offsets: HashMap<hecs::Entity, Vec2>,
     map: Map,
+    last_direction: Option<Direction>,
 }
 
 macro_rules! update_components {
@@ -83,6 +84,7 @@ impl Client {
 			keymap,
             position_offsets,
             map,
+            last_direction: None,
         })
     }
 
@@ -172,13 +174,18 @@ impl Client {
             }
         }
 
-        let movement = MovementState { dir };
+        let movement = MovementState {
+            dir: dir.clone(),
+        };
         let now = utils::epoch_time_millis();
 
-        messages.push(ClientMessage::Movement {
-            movement: movement.clone(),
-            timestamp: now,
-        });
+        if self.last_direction.as_ref().is_none_or(|last_dir| *last_dir != dir) {
+            self.last_direction = Some(dir);
+            messages.push(ClientMessage::Movement {
+                movement: movement.clone(),
+                timestamp: now,
+            });
+        }
 
         self.handle_movement_update(
             self.player,
