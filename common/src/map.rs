@@ -1,6 +1,5 @@
 use crate::Result;
 use serde::{ Serialize, Deserialize };
-pub const TILE_SIZE: f32 = 60.;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum BackTile {

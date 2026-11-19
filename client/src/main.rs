@@ -5,7 +5,7 @@ mod map;
 use crate::texture::TextureManager;
 use crate::keybinds::{ Event, KeyMap, load_keymap };
 use crate::map::Map;
-use common::map::{ Tile, FrontTile, BackTile, TILE_SIZE };
+use common::map::{ Tile, FrontTile, BackTile };
 use common::{
     Result,
     LATENCY,
@@ -46,6 +46,7 @@ struct Client {
     position_offsets: HashMap<hecs::Entity, Vec2>,
     map: Map,
     last_direction: Option<Direction>,
+    tile_size: f32,
 }
 
 macro_rules! update_components {
@@ -85,6 +86,7 @@ impl Client {
             position_offsets,
             map,
             last_direction: None,
+            tile_size: 60.0,
         })
     }
 
@@ -131,7 +133,7 @@ impl Client {
         for (id, offset) in &mut self.position_offsets {
             let world = self.world.write().unwrap();
             if let Ok(mut transform) = world.get::<&mut Transform>(*id) {
-                let change = offset.normalize() * 100.0 * delta.as_secs_f32();
+                let change = offset.normalize() * 0.6 * delta.as_secs_f32();
                 transform.pos += change;
                 *offset -= change;
             }
@@ -345,18 +347,19 @@ impl Client {
             0,   0, 0,   255, // BLACK
         ];
 
+        let tile_vec = vec2(self.tile_size, self.tile_size);
+
         if self.map.width == 0 {
             return;
         }
 
         let unknown = Texture2D::from_rgba8(2, 2, UNKNOWN_TEXTURE);
-        let tile_size = vec2(TILE_SIZE, TILE_SIZE);
 
         for (idx, tile) in self.map.tiles.iter().enumerate() {
             let x = idx % self.map.width;
             let y = idx / self.map.width;
             let pos = self.map.origin_pos
-            + vec2(x as f32, y as f32) * TILE_SIZE
+            + vec2(x as f32, y as f32) * tile_vec
             - viewport_offset;
 
             'render_back: {
@@ -373,7 +376,7 @@ impl Client {
                     pos.y,
                     WHITE,
                     DrawTextureParams {
-                        dest_size: Some(tile_size),
+                        dest_size: Some(tile_vec),
                         ..Default::default()
                     },
                 );
@@ -395,7 +398,7 @@ impl Client {
                     pos.y,
                     WHITE,
                     DrawTextureParams {
-                        dest_size: Some(tile_size),
+                        dest_size: Some(tile_vec),
                         ..Default::default()
                     },
                 );
@@ -425,6 +428,7 @@ impl Client {
             match world.get::<&Transform>(self.player) {
                 Ok(player_transform) => {
                     player_transform.pos
+                    * self.tile_size
                     - vec2(screen_width(), screen_height())
                     / 2.0
                 }
@@ -441,8 +445,8 @@ impl Client {
             {
                 let color = if entity == self.player { GREEN } else { RED };
 
-                let player_x = transform.pos.x - viewport_offset.x;
-                let player_y = transform.pos.y - viewport_offset.y;
+                let player_x = transform.pos.x * self.tile_size - viewport_offset.x;
+                let player_y = transform.pos.y * self.tile_size - viewport_offset.y;
 
                 const ENTITY_SIZE: f32 = 30.0;
 

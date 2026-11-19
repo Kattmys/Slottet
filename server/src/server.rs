@@ -1,5 +1,5 @@
 use common::utils::{ Counter, CounterType };
-use common::map::{ Tile, TILE_SIZE };
+use common::map::Tile;
 use common::{
     Result,
     LATENCY,
@@ -115,8 +115,8 @@ impl Server {
                 .and_then(|row| Some(row.len()))
                 .unwrap_or(0);
 
-            let tile_x = (pos.x / TILE_SIZE).max(0.0) as usize;
-            let tile_y = (pos.y / TILE_SIZE).max(0.0) as usize;
+            let tile_x = pos.x.max(0.0) as usize;
+            let tile_y = pos.y.max(0.0) as usize;
 
             let north = tile_y.saturating_sub(RENDER_DISTANCE / 2);
             let south = (tile_y + RENDER_DISTANCE / 2).min(self.map.len());
@@ -204,7 +204,7 @@ impl Server {
 
     async fn handle_connect(&mut self, client_id: ClientId) {
         let entity_id = {
-            let pos = vec2(32.0 * TILE_SIZE, 32.0 * TILE_SIZE);
+            let pos = vec2(32.0, 32.0);
             let inventory = vec![Item::new(ItemType::Axe)];
             let mut world = self.world.write().await;
             world.spawn(PlayerBundle {
