@@ -5,7 +5,12 @@ mod transform;
 pub use transform::Transform;
 
 mod direction;
-pub use direction::{ Direction, MovementState };
+pub use direction::{
+    Direction,
+    DirectionComponentX,
+    DirectionComponentY,
+    MovementState,
+};
 
 mod items;
 pub use items::{ Item, ItemType, Inventory };

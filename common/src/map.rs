@@ -59,12 +59,19 @@ impl Tile {
 
     pub fn has_collision(&self) -> bool {
         let back = match self.back {
-            BackTile::Grass | BackTile::Stone => false,
-            BackTile::None => true,
+            BackTile::Stone |
+            BackTile::Grass |
+            BackTile::None
+                => false,
         };
         let front = match self.front {
-            FrontTile::Tree | FrontTile::Wall | FrontTile::Stone => true,
-            FrontTile::None | FrontTile::Flowers => false,
+            FrontTile::Tree |
+            FrontTile::Wall |
+            FrontTile::Stone
+                => true,
+            FrontTile::None |
+            FrontTile::Flowers
+                => false,
         };
 
         back | front
@@ -80,8 +87,6 @@ pub struct Map {
 }
 
 impl Map {
-    #[allow(unused)]
-    #[must_use]
     pub fn get(&self, x: usize, y: usize) -> Option<&Tile> {
         if x < self.width && y < self.height {
             self.tiles.get(y * self.width + x)
@@ -91,7 +96,7 @@ impl Map {
     }
 
     pub fn get_3x3_around(&self, pos: Vec2) -> [Tile; 9] {
-        let rel_pos = (pos - self.origin_pos);
+        let rel_pos = pos - self.origin_pos;
 
         let mut tiles = [Tile::empty(); 9];
 

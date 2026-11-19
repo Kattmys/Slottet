@@ -480,8 +480,8 @@ impl Client {
                 draw_rectangle(
                     player_x,
                     player_y,
-                    ENTITY_SPRITE_SIZE,
-                    ENTITY_SPRITE_SIZE,
+                    ENTITY_SPRITE_SIZE * self.tile_size,
+                    ENTITY_SPRITE_SIZE * self.tile_size,
                     color,
                 );
             }

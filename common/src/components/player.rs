@@ -1,7 +1,7 @@
 use super::{ Transform, MovementState, Inventory };
 use serde::{ Deserialize, Serialize };
 
-pub const ENTITY_SPRITE_SIZE: f32 = 30.0;
+pub const ENTITY_SPRITE_SIZE: f32 = 0.6;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Player;
