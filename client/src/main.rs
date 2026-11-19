@@ -26,7 +26,7 @@ use common::{ systems, utils };
 use macroquad::prelude::*;
 use std::env;
 use std::time::{ Duration, Instant };
-use std::sync::{ Arc, Mutex };
+use std::sync::{ Arc, RwLock };
 use std::collections::HashMap;
 use renet::{ RenetClient, DefaultChannel };
 use renet_netcode::NetcodeClientTransport;
@@ -34,7 +34,7 @@ use renet_netcode::NetcodeClientTransport;
 struct Client {
     client: RenetClient,
     transport: NetcodeClientTransport,
-    world: Arc<Mutex<hecs::World>>,
+    world: Arc<RwLock<hecs::World>>,
     player: hecs::Entity,
     keymap: KeyMap,
     textures: TextureManager,
@@ -55,7 +55,7 @@ macro_rules! update_components {
 impl Client {
     async fn connect(addr: String) -> Result<Self> {
         let (client, transport) = create_client(addr)?;
-        let world = Arc::new(Mutex::new(hecs::World::new()));
+        let world = Arc::new(RwLock::new(hecs::World::new()));
         let player = hecs::Entity::DANGLING;
         let textures = TextureManager::init("assets").await?;
         let keymap = load_keymap();
@@ -115,7 +115,7 @@ impl Client {
         self.handle_position_offsets(delta).await;
     }
 
-    fn update_movement_loop(world: Arc<Mutex<hecs::World>>) {
+    fn update_movement_loop(world: Arc<RwLock<hecs::World>>) {
         let delta_fix = Duration::from_millis(1000 / TICK_RATE);
         let mut last_tick = Instant::now();
 
@@ -123,10 +123,7 @@ impl Client {
             let now = Instant::now();
             let delta = now.duration_since(last_tick);
             last_tick = now;
-            {
-                let mut world = world.lock().unwrap();
-                systems::update_movement(&mut world, delta);
-            }
+            systems::update_movement(Arc::clone(&world), delta);
             std::thread::sleep(delta_fix - Instant::now().duration_since(last_tick));
         }
     }
@@ -138,7 +135,7 @@ impl Client {
         });
 
         for (id, offset) in &mut self.position_offsets {
-            let world = self.world.lock().unwrap();
+            let world = self.world.read().unwrap();
             if let Ok(mut transform) = world.get::<&mut Transform>(*id) {
                 let change = offset.normalize() * 100.0 * delta.as_secs_f32();
                 transform.pos += change;
@@ -206,7 +203,7 @@ impl Client {
         let world = self.world.clone();
         std::thread::spawn(move || {
             sleep_until!(thread, timestamp + LATENCY);
-            let world = world.lock().unwrap();
+            let world = world.read().unwrap();
             if let Ok(mut entity_movement) = world.get::<&mut MovementState>(entity) {
                 *entity_movement = movement;
             }
@@ -221,25 +218,25 @@ impl Client {
 
             ServerMessage::ClientDisconnect { entity } => {
                 println!("disconnected: {entity:?}");
-                let mut world = self.world.lock().unwrap();
+                let mut world = self.world.write().unwrap();
                 let _ = world.despawn(entity);
             }
 
             ServerMessage::World(columns) => {
                 for id in columns.ids {
-                    let mut world = self.world.lock().unwrap();
+                    let mut world = self.world.write().unwrap();
                     if !world.contains(id) {
                         world.spawn_at(id, ());
                     }
                 }
 
-                update_components!(self.world.lock().unwrap(), columns, [
+                update_components!(self.world.write().unwrap(), columns, [
                     Player,
                     MovementState
                 ]);
 
                 for (id, real_transform) in columns.Transform {
-                    let mut world = self.world.lock().unwrap();
+                    let mut world = self.world.write().unwrap();
                     if let Ok(transform) = world.get::<&Transform>(id) {
                         let pos = transform.pos;
                         let real_pos = real_transform.pos;
@@ -396,7 +393,7 @@ impl Client {
         }
 
         let viewport_offset = {
-            let world = self.world.lock().unwrap();
+            let world = self.world.read().unwrap();
             match world.get::<&Transform>(self.player) {
                 Ok(player_transform) => {
                     player_transform.pos
@@ -410,7 +407,7 @@ impl Client {
         self.render_map(viewport_offset).await;
 
         {
-            let world = self.world.lock().unwrap();
+            let world = self.world.read().unwrap();
             for (entity, transform, movement) in
                 world.query::<(hecs::Entity, &Transform, &MovementState)>().iter()
             {
@@ -419,20 +416,18 @@ impl Client {
                 let player_x = transform.pos.x - viewport_offset.x;
                 let player_y = transform.pos.y - viewport_offset.y;
 
-                const ENTITY_SIZE: f32 = 30.0;
-
-                let dir = Vec2::from(&movement.dir).normalize() * ENTITY_SIZE;
+                let dir = Vec2::from(&movement.dir).normalize() * ENTITY_SPRITE_SIZE;
 
                 const ARROW_SIZE: f32 = 0.4;
                 const ARROW_COLOR: Color = GRAY;
                 let arrow_point = vec2(
-                    player_x + ENTITY_SIZE / 2. + dir.x, 
-                    player_y + ENTITY_SIZE / 2. + dir.y,
+                    player_x + ENTITY_SPRITE_SIZE / 2. + dir.x, 
+                    player_y + ENTITY_SPRITE_SIZE / 2. + dir.y,
                 );
 
                 draw_line(
-                    player_x + ENTITY_SIZE / 2.,
-                    player_y + ENTITY_SIZE / 2.,
+                    player_x + ENTITY_SPRITE_SIZE / 2.,
+                    player_y + ENTITY_SPRITE_SIZE / 2.,
                     arrow_point.x,
                     arrow_point.y,
                     3.5,
@@ -449,8 +444,8 @@ impl Client {
                 draw_rectangle(
                     player_x,
                     player_y,
-                    ENTITY_SIZE,
-                    ENTITY_SIZE,
+                    ENTITY_SPRITE_SIZE,
+                    ENTITY_SPRITE_SIZE,
                     color,
                 );
             }

@@ -1,5 +1,5 @@
 use common::utils::{ Counter, CounterType };
-use common::map::{ Tile, TILE_SIZE };
+use common::map::{ Map, Tile, TILE_SIZE };
 use common::{
     Result,
     LATENCY,
@@ -30,7 +30,7 @@ pub struct Server {
     transport: NetcodeServerTransport,
     world: Arc<RwLock<hecs::World>>,
     clients: BiMap<ClientId, hecs::Entity>,
-    map: [[Tile; 64]; 64],
+    map: Map,
     last_render_spot: HashMap<hecs::Entity, Vec2>,
 }
 
@@ -43,10 +43,20 @@ impl Server {
         let clients = BiMap::new();
 
         let map_filename = "maps/test-map.toml";
-        let map = map::load_map(map_filename)
+        let tile_matrix = map::load_map::<64, 64>(map_filename)
             .expect(&*format!("could not load {map_filename}"));
         // crate::map::print_map(&map);
 
+        let mut map = Map {
+            origin_pos: vec2(0., 0.),
+            width: 64,
+            height: 64,
+            tiles: Vec::new()
+        };
+        for column in tile_matrix {
+            map.tiles.extend(&column);
+        }
+        
         let last_render_spot = HashMap::new();
 
         Ok(Self {
@@ -112,27 +122,26 @@ impl Server {
             };
             let mut tile_messages = vec![];
 
-            let row_len = self.map.get(0)
-                .and_then(|row| Some(row.len()))
-                .unwrap_or(0);
+            // let row_len = self.map.get(0)
+            //     .and_then(|row| Some(row.len()))
+            //     .unwrap_or(0);
 
             let tile_x = (pos.x / TILE_SIZE).max(0.0) as usize;
             let tile_y = (pos.y / TILE_SIZE).max(0.0) as usize;
 
+            // TODO take origin_pos in beaktande
             let north = tile_y.saturating_sub(RENDER_DISTANCE / 2);
-            let south = (tile_y + RENDER_DISTANCE / 2).min(self.map.len());
+            let south = (tile_y + RENDER_DISTANCE / 2)
+                .min(self.map.height);
             let west = tile_x.saturating_sub(RENDER_DISTANCE / 2);
-            let east = (tile_x + RENDER_DISTANCE / 2).min(row_len);
+            let east = (tile_x + RENDER_DISTANCE / 2)
+                .min(self.map.width);
 
             for y in north..south {
-                let Some(row) = self.map.get(y) else {
-                    continue;
-                };
-
-                let tiles = row[west..east].to_vec().into_boxed_slice();
+                let tiles = self.map.tiles[(west + y * self.map.width)..(east + y * self.map.width)].to_vec().into_boxed_slice();
 
                 tile_messages.push(ServerMessage::MapPart {
-                    index: y * row_len + west,
+                    index: y * self.map.height + west,
                     tiles,
                 });
             }
@@ -162,7 +171,7 @@ impl Server {
 
             {
                 let mut world = world.write().await;
-                systems::update_movement(&mut world, delta);
+                systems::update_movement(&mut world, &self.map, delta);
             }
         }
     }
@@ -243,10 +252,8 @@ impl Server {
                 },
                 ServerMessage::MapData {
                     origin_pos: Vec2::ZERO,
-                    world_width: self.map.len(),
-                    world_height: self.map.get(0)
-                        .and_then(|row| Some(row.len()))
-                        .unwrap_or(0),
+                    world_width: self.map.width,
+                    world_height: self.map.height,
                 },
                 ServerMessage::World(
                     columns!(self.world.read().await, [

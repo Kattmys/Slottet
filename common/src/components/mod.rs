@@ -1,5 +1,5 @@
 mod player;
-pub use player::{ Player, PlayerBundle };
+pub use player::{ Player, PlayerBundle, ENTITY_SPRITE_SIZE };
 
 mod transform;
 pub use transform::Transform;
