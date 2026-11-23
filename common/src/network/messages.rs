@@ -51,9 +51,10 @@ pub struct Columns {
     pub Transform: Column<components::Transform>,
     pub MovementState: Column<components::MovementState>,
     pub Inventory: Column<components::Inventory>,
+    pub Health: Column<components::Health>,
 }
 
-pub const NUM_COLUMNS: u64 = 4;
+pub const NUM_COLUMNS: u64 = 5;
 
 #[macro_export]
 macro_rules! columns {

@@ -1,4 +1,4 @@
-use super::{ Transform, MovementState, Inventory };
+use crate::components::{ Transform, MovementState, Inventory, Health };
 use serde::{ Deserialize, Serialize };
 
 pub const ENTITY_SPRITE_SIZE: f32 = 0.6;
@@ -12,4 +12,5 @@ pub struct PlayerBundle {
     pub transform: Transform,
     pub movement_state: MovementState,
     pub inventory: Inventory,
+    pub health: Health,
 }

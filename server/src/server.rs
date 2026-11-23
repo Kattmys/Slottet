@@ -166,7 +166,7 @@ impl Server {
     // }
 
     async fn get_column_msg(&self, index: CounterType) -> ServerMessage {
-        debug_assert_eq!(NUM_COLUMNS, 4);
+        debug_assert_eq!(NUM_COLUMNS, 5);
         let world = self.world.read().await;
         let columns = match index {
             0 => columns!(world, [Player]),
@@ -174,6 +174,7 @@ impl Server {
             2 => columns!(world, [MovementState]),
             // TODO do not send everyone's inventory to everyone
             3 => columns!(world, [Inventory]),
+            4 => columns!(world, [Health]),
             _ => unreachable!()
         };
         ServerMessage::World(columns)
@@ -241,6 +242,7 @@ impl Server {
                     selected: 0,
                     max_size: DEFAULT_MAX_INVENTORY_SIZE,
                 },
+                health: Health::default(),
             })
         };
 
@@ -264,7 +266,8 @@ impl Server {
                         Player,
                         Transform,
                         MovementState,
-                        Inventory
+                        Inventory,
+                        Health
                     ])
                 ),
                 map_msg,

@@ -10,6 +10,7 @@ pub struct Item {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ItemType {
     Axe,
+    KnelBule,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -34,6 +35,7 @@ impl ItemType {
     pub fn durability(&self) -> Option<f32> {
         match self {
             ItemType::Axe => Some(5.0),
+            ItemType::KnelBule => None,
         }
     }
 
@@ -41,6 +43,7 @@ impl ItemType {
         // deploy time in ms
         match self {
             ItemType::Axe => 400,
+            ItemType::KnelBule => 0,
         }
     }
 
@@ -48,6 +51,7 @@ impl ItemType {
         // firing cooldown in ms
         match self {
             ItemType::Axe => 800,
+            ItemType::KnelBule => 0,
         }
     }
 }

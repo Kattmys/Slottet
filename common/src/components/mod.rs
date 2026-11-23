@@ -9,3 +9,6 @@ pub use direction::{ Direction, MovementState };
 
 mod items;
 pub use items::{ Item, ItemType, Inventory };
+
+mod health;
+pub use health::Health;

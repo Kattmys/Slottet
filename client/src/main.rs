@@ -25,6 +25,7 @@ use common::components::{
     MovementState,
     Direction,
     Inventory,
+    Health,
 };
 use common::{ systems, utils };
 
@@ -264,10 +265,11 @@ impl Client {
                     }
                 }
 
-                debug_assert_eq!(NUM_COLUMNS, 4);
+                debug_assert_eq!(NUM_COLUMNS, 5);
                 update_components!(self.world.write().unwrap(), columns, [
                     Player,
-                    MovementState
+                    MovementState,
+                    Health
                 ]);
                 // handled separately:
                 //     Transform
@@ -322,9 +324,11 @@ impl Client {
         }
     }
 
-    async fn handle_network
-        (&mut self, delta: Duration, messages: Vec<ClientMessage>) -> Result<()>
-    {
+    async fn handle_network(
+        &mut self,
+        delta: Duration,
+        messages: Vec<ClientMessage>
+    ) -> Result<()> {
         self.client.update(delta);
         self.transport.update(delta, &mut self.client)?;
 
@@ -414,10 +418,9 @@ impl Client {
                     },
                 );
             }
+
         }
     }
-
-
     async fn render(&self) {
         clear_background(LIGHTGRAY);
 
@@ -438,61 +441,106 @@ impl Client {
             let world = self.world.read().unwrap();
             match world.get::<&Transform>(self.player) {
                 Ok(player_transform) => {
-                    player_transform.pos
-                    * self.tile_size
-                    - vec2(screen_width(), screen_height())
-                    / 2.0
+                    player_transform.pos * self.tile_size
+                        - vec2(screen_width(), screen_height()) / 2.0
                 }
                 Err(_) => Vec2::ZERO,
             }
         };
 
         self.render_map(viewport_offset).await;
+        self.render_entities(viewport_offset);
+    }
 
-        {
-            let world = self.world.read().unwrap();
-            for (entity, transform, movement) in
-                world.query::<(hecs::Entity, &Transform, &MovementState)>().iter()
-            {
-                let color = if entity == self.player { GREEN } else { RED };
+    fn render_entities(&self, viewport_offset: Vec2) {
+        let world = self.world.read().unwrap();
 
-                let player_x = transform.pos.x * self.tile_size - viewport_offset.x;
-                let player_y = transform.pos.y * self.tile_size - viewport_offset.y;
-
-                let dir = Vec2::from(&movement.dir).normalize() * ENTITY_SPRITE_SIZE;
-
-                const ARROW_SIZE: f32 = 0.4;
-                const ARROW_COLOR: Color = GRAY;
-                let arrow_point = vec2(
-                    player_x + ENTITY_SPRITE_SIZE / 2. + dir.x, 
-                    player_y + ENTITY_SPRITE_SIZE / 2. + dir.y,
-                );
-
-                draw_line(
-                    player_x + ENTITY_SPRITE_SIZE / 2.,
-                    player_y + ENTITY_SPRITE_SIZE / 2.,
-                    arrow_point.x,
-                    arrow_point.y,
-                    3.5,
-                    ARROW_COLOR,
-                );
-
-                draw_triangle(
-                    arrow_point + dir / 2.,
-                    arrow_point - dir.perp() * ARROW_SIZE / 2.,
-                    arrow_point + dir.perp() * ARROW_SIZE / 2.,
-                    ARROW_COLOR,
-                );
-
-                draw_rectangle(
-                    player_x,
-                    player_y,
-                    ENTITY_SPRITE_SIZE * self.tile_size,
-                    ENTITY_SPRITE_SIZE * self.tile_size,
-                    color,
-                );
-            }
+        let mut query = world.query::<(hecs::Entity, &Transform, &MovementState, &Health)>();
+        for (entity, transform, movement, health) in query.iter() {
+            self.render_player(entity, transform, movement, health, viewport_offset);
         }
+    }
+
+    fn render_player(
+        &self,
+        entity: hecs::Entity,
+        transform: &Transform,
+        movement: &MovementState,
+        health: &Health,
+        viewport_offset: Vec2,
+    ) {
+        let is_local_player = entity == self.player;
+        let color = if is_local_player { GREEN } else { RED };
+
+        let sprite_px = ENTITY_SPRITE_SIZE * self.tile_size;
+        let screen_pos = transform.pos * self.tile_size - viewport_offset;
+
+        let dir = Vec2::from(&movement.dir).normalize_or_zero();
+        if dir != Vec2::ZERO {
+            let start = screen_pos + Vec2::splat(sprite_px / 2.0);
+            let end = start + dir * 2. * (sprite_px * 0.75);
+            self.render_arrow(start, end);
+        }
+
+        draw_rectangle(
+            screen_pos.x,
+            screen_pos.y,
+            sprite_px,
+            sprite_px,
+            color,
+        );
+
+        self.render_health_bar(is_local_player, screen_pos, sprite_px, health);
+    }
+
+    fn render_health_bar(
+        &self,
+        is_local_player: bool,
+        screen_pos: Vec2,
+        sprite_px: f32,
+        health: &Health,
+    ) {
+        if is_local_player {
+            draw_rectangle(20., 20., 145., 20., BLACK);
+            draw_rectangle(23., 23., 140. * health.ratio(), 15., RED);
+        } else {
+            let max_width = 1.6 * sprite_px;
+            let bar_width = health.ratio() * max_width;
+
+            let start_x = screen_pos.x - (max_width - sprite_px) / 2.;
+            let start_y = screen_pos.y - sprite_px / 2.;
+            draw_rectangle(start_x, start_y, max_width, 10., BLACK);
+            draw_rectangle(start_x + 1., start_y + 1., bar_width, 8., RED);
+        }
+    }
+
+    fn render_arrow(&self, start: Vec2, end: Vec2) {
+        let diff = end - start;
+        let dir = diff.normalize_or_zero();
+        if dir == Vec2::ZERO {
+            return;
+        }
+
+        const ARROW_HEAD_SIZE: f32 = 12.0;
+        const ARROW_COLOR: Color = GRAY;
+
+        let line_end = end - dir * ARROW_HEAD_SIZE;
+
+        draw_line(
+            start.x,
+            start.y,
+            line_end.x,
+            line_end.y,
+            3.5,
+            ARROW_COLOR,
+        );
+
+        draw_triangle(
+            end,
+            line_end - dir.perp() * (ARROW_HEAD_SIZE / 2.0),
+            line_end + dir.perp() * (ARROW_HEAD_SIZE / 2.0),
+            ARROW_COLOR,
+        );
     }
 }
 
