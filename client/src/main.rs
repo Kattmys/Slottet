@@ -43,7 +43,7 @@ struct Client {
     player: hecs::Entity,
     keymap: KeyMap,
     textures: TextureManager,
-    position_offsets: HashMap<hecs::Entity, Vec2>,
+    position_offsets: Arc<RwLock<HashMap<hecs::Entity, Vec2>>>,
     map: Map,
     last_direction: Option<Direction>,
     tile_size: f32,
@@ -66,7 +66,7 @@ impl Client {
         let player = hecs::Entity::DANGLING;
         let textures = TextureManager::init("assets");
         let keymap = load_keymap();
-        let position_offsets = HashMap::new();
+        let position_offsets = Arc::new(RwLock::new(HashMap::new()));
 
         let map = {
             let origin_pos = Vec2::ZERO;
@@ -138,17 +138,19 @@ impl Client {
     }
 
     async fn handle_position_offsets(&mut self, delta: Duration) {
-        self.position_offsets.retain(|id, offset| {
+        let world = self.world.write().unwrap();
+        let mut position_offsets = self.position_offsets.write().unwrap();
+
+        position_offsets.retain(|id, offset| {
             let error_margin = offset.length();
             error_margin > 0.1 || (*id == self.player && error_margin > 0.4)
         });
 
-        for (id, offset) in &mut self.position_offsets {
-            let world = self.world.write().unwrap();
+        for (id, offset) in position_offsets.iter_mut() {
             if let Ok(mut transform) = world.get::<&mut Transform>(*id) {
-                // let change = offset.normalize() * 0.6 * delta.as_secs_f32();
-                // transform.pos += change;
-                // *offset -= change;
+                let change = offset.normalize() * 2.0 * delta.as_secs_f32();
+                transform.pos += change;
+                *offset -= change;
             }
         }
     }
@@ -202,12 +204,6 @@ impl Client {
             });
         }
 
-        self.handle_movement_update(
-            self.player,
-            movement,
-            now,
-        ).await;
-
         messages
     }
 
@@ -225,15 +221,25 @@ impl Client {
         }
     }
 
-    async fn handle_movement_update
-        (&mut self, entity: hecs::Entity, movement: MovementState, timestamp: u128)
-    {
+    async fn handle_movement_update(
+        &mut self,
+        entity: hecs::Entity,
+        movement: MovementState,
+        timestamp: u128,
+        position: Vec2,
+    ) {
         let world = self.world.clone();
+        let position_offsets = self.position_offsets.clone();
         std::thread::spawn(move || {
             sleep_until!(thread, timestamp + LATENCY);
             let world = world.write().unwrap();
+            let mut position_offsets = position_offsets.write().unwrap();
             if let Ok(mut entity_movement) = world.get::<&mut MovementState>(entity) {
                 *entity_movement = movement;
+            }
+            if let Ok(transform) = world.get::<&Transform>(entity) {
+                let current_pos = transform.pos;
+                position_offsets.insert(entity, position - current_pos);
             }
         });
     }
@@ -269,10 +275,11 @@ impl Client {
 
                 for (id, real_transform) in columns.Transform {
                     let mut world = self.world.write().unwrap();
+                    let mut position_offsets = self.position_offsets.write().unwrap();
                     if let Ok(transform) = world.get::<&Transform>(id) {
                         let pos = transform.pos;
                         let real_pos = real_transform.pos;
-                        self.position_offsets.insert(id, real_pos - pos);
+                        position_offsets.insert(id, real_pos - pos);
                     } else {
                         world.insert(id, (real_transform,)).unwrap();
                     }
@@ -309,8 +316,8 @@ impl Client {
             }
 
 
-            ServerMessage::Movement { entity, movement, timestamp } => {
-                self.handle_movement_update(entity, movement, timestamp).await;
+            ServerMessage::Movement { entity, movement, timestamp, position } => {
+                self.handle_movement_update(entity, movement, timestamp, position).await;
             }
         }
     }

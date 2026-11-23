@@ -192,14 +192,19 @@ impl Server {
             }
 
             ClientMessage::Movement { ref movement, timestamp } => {
+                let position = match self.world.read().await.get::<&Transform>(*entity) {
+                    Ok(transform) => transform.pos,
+                    _ => unreachable!()
+                };
+
                 let packet = ServerMessage::Movement {
                     entity: *entity,
                     movement: movement.clone(),
                     timestamp,
+                    position,
                 };
 
-                self.server.broadcast_message_except(
-                    client_id,
+                self.server.broadcast_message(
                     DefaultChannel::ReliableUnordered,
                     serialize(vec![packet]).unwrap(),
                 );

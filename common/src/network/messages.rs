@@ -15,6 +15,7 @@ pub enum ServerMessage {
         entity: hecs::Entity,
         movement: MovementState,
         timestamp: u128,
+        position: Vec2,
     },
     ClientDisconnect {
         entity: hecs::Entity,
@@ -34,6 +35,7 @@ pub enum ServerMessage {
 pub enum ClientMessage {
     Movement {
         movement: MovementState,
+        // TODO do not send timestamp
         timestamp: u128,
     },
     Disconnect,
