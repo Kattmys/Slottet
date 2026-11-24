@@ -195,13 +195,11 @@ impl Client {
         let movement = MovementState {
             dir: dir.clone(),
         };
-        let now = utils::epoch_time_millis();
 
         if self.last_direction.as_ref().is_none_or(|last_dir| *last_dir != dir) {
             self.last_direction = Some(dir);
             messages.push(ClientMessage::Movement {
                 movement: movement.clone(),
-                timestamp: now,
             });
         }
 
@@ -222,7 +220,7 @@ impl Client {
         }
     }
 
-    async fn handle_movement_update(
+    fn handle_movement_update(
         &mut self,
         entity: hecs::Entity,
         movement: MovementState,
@@ -245,8 +243,14 @@ impl Client {
         });
     }
 
-    async fn handle_msg(&mut self, msg: ServerMessage) {
+    fn handle_msg(&mut self, msg: ServerMessage) {
         match msg {
+            ServerMessage::Messages(messages) => {
+                for msg in messages {
+                    self.handle_msg(*msg);
+                }
+            }
+
             ServerMessage::InitialData { entity } => {
                 self.player = entity;
             }
@@ -319,7 +323,7 @@ impl Client {
 
 
             ServerMessage::Movement { entity, movement, timestamp, position } => {
-                self.handle_movement_update(entity, movement, timestamp, position).await;
+                self.handle_movement_update(entity, movement, timestamp, position);
             }
         }
     }
@@ -345,7 +349,7 @@ impl Client {
                     match deserialize::<Vec<ServerMessage>>(data) {
                         Ok(messages) => {
                             for msg in messages {
-                                self.handle_msg(msg).await;
+                                self.handle_msg(msg);
                             }
                         }
                         Err(err) => eprintln!("{}", err)

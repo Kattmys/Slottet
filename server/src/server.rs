@@ -8,6 +8,7 @@ use common::{
     components::*,
     systems,
     columns,
+    utils,
     sleep_until,
 };
 
@@ -90,15 +91,13 @@ impl Server {
                 systems::update_movement(&mut world, &self.map, delta);
             }
 
-            let mut messages = Vec::new();
-
             if send_column_counter.step(1) == 0 {
-                messages.push(self.get_column_msg(column_counter.step(1)).await);
+                self.send_column_msg(column_counter.step(1)).await;
             }
             
             // self.send_map().await;
 
-            self.handle_network(delta, messages).await.expect("network error");
+            self.handle_network(delta).await.expect("network error");
         }
     }
 
@@ -165,7 +164,7 @@ impl Server {
     //     }
     // }
 
-    async fn get_column_msg(&self, index: CounterType) -> ServerMessage {
+    async fn send_column_msg(&mut self, index: CounterType) {
         debug_assert_eq!(NUM_COLUMNS, 5);
         let world = self.world.read().await;
         let columns = match index {
@@ -177,7 +176,10 @@ impl Server {
             4 => columns!(world, [Health]),
             _ => unreachable!()
         };
-        ServerMessage::World(columns)
+        self.server.broadcast_message(
+            DefaultChannel::Unreliable,
+            serialize(ServerMessage::World(columns)).unwrap()
+        );
     }
 
     async fn handle_msg(&mut self, client_id: ClientId, msg: ClientMessage) {
@@ -192,11 +194,13 @@ impl Server {
                 self.server.disconnect(client_id);
             }
 
-            ClientMessage::Movement { ref movement, timestamp } => {
+            ClientMessage::Movement { ref movement } => {
                 let position = match self.world.read().await.get::<&Transform>(*entity) {
                     Ok(transform) => transform.pos,
                     _ => unreachable!()
                 };
+
+                let timestamp = utils::epoch_time_millis();
 
                 let packet = ServerMessage::Movement {
                     entity: *entity,
@@ -207,7 +211,7 @@ impl Server {
 
                 self.server.broadcast_message(
                     DefaultChannel::ReliableUnordered,
-                    serialize(vec![packet]).unwrap(),
+                    serialize(packet).unwrap(),
                 );
 
                 let world = self.world.clone();
@@ -252,15 +256,15 @@ impl Server {
         self.server.send_message(
             client_id,
             DefaultChannel::ReliableUnordered,
-            serialize(vec![
+            serialize(ServerMessage::Messages(vec![
                 ServerMessage::InitialData {
                     entity: entity_id,
-                },
+                }.into(),
                 ServerMessage::MapData {
                     origin_pos: Vec2::ZERO,
                     world_width: self.map.width,
                     world_height: self.map.height,
-                },
+                }.into(),
                 ServerMessage::World(
                     columns!(self.world.read().await, [
                         Player,
@@ -269,9 +273,9 @@ impl Server {
                         Inventory,
                         Health
                     ])
-                ),
-                map_msg,
-            ]).unwrap()
+                ).into(),
+                map_msg.into(),
+            ])).unwrap()
         );
     }
 
@@ -282,16 +286,14 @@ impl Server {
             world.despawn(entity).unwrap();
             self.server.broadcast_message(
                 DefaultChannel::ReliableUnordered,
-                serialize(vec![
+                serialize(
                     ServerMessage::ClientDisconnect { entity }
-                ]).unwrap()
+                ).unwrap()
             );
         }
     }
 
-    async fn handle_network
-        (&mut self, delta: Duration, messages: Vec<ServerMessage>) -> Result<()>
-    {
+    async fn handle_network(&mut self, delta: Duration) -> Result<()> {
         self.server.update(delta);
         self.transport.update(delta, &mut self.server)?;
 
@@ -313,11 +315,9 @@ impl Server {
                     client_id,
                     *channel,
                 ) {
-                    match deserialize::<Vec<ClientMessage>>(&bytes) {
-                        Ok(messages) => {
-                            for msg in messages {
-                                self.handle_msg(client_id, msg).await;
-                            }
+                    match deserialize::<ClientMessage>(&bytes) {
+                        Ok(message) => {
+                            self.handle_msg(client_id, message).await;
                         }
                         Err(e) => eprintln!(
                             "client {client_id}: malformed packet: {e:?}"
@@ -327,12 +327,12 @@ impl Server {
             }
         }
 
-        if !messages.is_empty() {
-            self.server.broadcast_message(
-                DefaultChannel::Unreliable,
-                serialize(messages).unwrap()
-            );
-        }
+        // if !messages.is_empty() {
+        //     self.server.broadcast_message(
+        //         DefaultChannel::Unreliable,
+        //         serialize(messages).unwrap()
+        //     );
+        // }
 
         self.transport.send_packets(&mut self.server);
 

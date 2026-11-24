@@ -8,6 +8,7 @@ use serde::{ Serialize, Deserialize };
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ServerMessage {
     World(Columns),
+    Messages(Vec<Box<ServerMessage>>),
     InitialData {
         entity: hecs::Entity,
     },
@@ -35,8 +36,6 @@ pub enum ServerMessage {
 pub enum ClientMessage {
     Movement {
         movement: MovementState,
-        // TODO do not send timestamp
-        timestamp: u128,
     },
     Disconnect,
 }
