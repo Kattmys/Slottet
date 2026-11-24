@@ -189,6 +189,12 @@ impl Server {
         };
 
         match msg {
+            ClientMessage::Messages(messages) => {
+                for msg in messages {
+                    Box::pin(self.handle_msg(client_id, *msg)).await;
+                }
+            }
+
             ClientMessage::Disconnect => {
                 self.handle_disconnect(client_id, "player left".to_string()).await;
                 self.server.disconnect(client_id);

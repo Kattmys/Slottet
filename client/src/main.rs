@@ -123,10 +123,10 @@ impl Client {
     }
     
     async fn update(&mut self, delta: Duration) {
-        let mut messages = self.handle_input().await;
+        self.handle_input();
 
         if is_quit_requested() {
-            self.handle_exit(&mut messages);
+            self.handle_exit();
         }
 
         {
@@ -134,7 +134,9 @@ impl Client {
             systems::update_movement(&mut world, &self.map, delta);
         }
 
-        self.handle_network(delta, messages).await.expect("network error");
+        // TODO do not ignore error
+        // (requires checking error type)
+        let _ = self.handle_network(delta).await;
         self.handle_position_offsets(delta).await;
     }
 
@@ -156,10 +158,7 @@ impl Client {
         }
     }
 
-    #[must_use]
-    async fn handle_input(&mut self) -> Vec<ClientMessage> {
-        let mut messages = Vec::new();
-
+    fn handle_input(&mut self) {
         let events: Vec<_> = get_keys_down()
             .iter()
             .filter_map(|key| self.keymap.get(key).cloned())
@@ -198,12 +197,13 @@ impl Client {
 
         if self.last_direction.as_ref().is_none_or(|last_dir| *last_dir != dir) {
             self.last_direction = Some(dir);
-            messages.push(ClientMessage::Movement {
-                movement: movement.clone(),
-            });
+            self.client.send_message(
+                DefaultChannel::ReliableOrdered,
+                serialize(ClientMessage::Movement {
+                    movement: movement.clone(),
+                }).unwrap(),
+            );
         }
-
-        messages
     }
 
     fn use_item(&mut self) {
@@ -331,26 +331,17 @@ impl Client {
     async fn handle_network(
         &mut self,
         delta: Duration,
-        messages: Vec<ClientMessage>
     ) -> Result<()> {
+
         self.client.update(delta);
         self.transport.update(delta, &mut self.client)?;
 
         if self.client.is_connected() {
-            if !messages.is_empty() {
-                self.client.send_message(
-                    DefaultChannel::ReliableOrdered,
-                    serialize(messages)?,
-                );
-            }
-
             for channel in RENET_CHANNELS {
                 while let Some(ref data) = self.client.receive_message(*channel) {
-                    match deserialize::<Vec<ServerMessage>>(data) {
-                        Ok(messages) => {
-                            for msg in messages {
-                                self.handle_msg(msg);
-                            }
+                    match deserialize::<ServerMessage>(data) {
+                        Ok(message) => {
+                            self.handle_msg(message);
                         }
                         Err(err) => eprintln!("{}", err)
                     }
@@ -363,8 +354,11 @@ impl Client {
         Ok(())
     }
 
-    fn handle_exit(&self, messages: &mut Vec<ClientMessage>) {
-        messages.push(ClientMessage::Disconnect);
+    fn handle_exit(&mut self) {
+        self.client.send_message(
+            DefaultChannel::ReliableUnordered,
+            serialize(ClientMessage::Disconnect).unwrap(),
+        );
     }
 
     async fn render_map(&self, viewport_offset: Vec2) {

@@ -34,6 +34,7 @@ pub enum ServerMessage {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientMessage {
+    Messages(Vec<Box<ClientMessage>>),
     Movement {
         movement: MovementState,
     },
